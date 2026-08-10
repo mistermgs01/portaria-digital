@@ -30,25 +30,58 @@ function normalizeHeader(h: string): string {
 }
 
 const ALIAS: Record<string, keyof LinhaPreview> = {
+  // Nome / Morador
   morador: 'nome',
   nome: 'nome',
   'nome completo': 'nome',
   residente: 'nome',
   proprietario: 'nome',
+  proponente: 'nome',
+  '1o proponente': 'nome',
+  '1 proponente': 'nome',
+  'primeiro proponente': 'nome',
+  titular: 'nome',
+  condômino: 'nome',
+  condomino: 'nome',
+  // Apartamento
   apartamento: 'apartamento',
   apto: 'apartamento',
   apt: 'apartamento',
   unidade: 'apartamento',
+  'unidade / apto': 'apartamento',
+  'numero': 'apartamento',
+  'num': 'apartamento',
+  'n': 'apartamento',
+  // Bloco
   bloco: 'bloco',
   torre: 'bloco',
   edificio: 'bloco',
+  'bloco / torre': 'bloco',
+  'bloco/torre': 'bloco',
+  setor: 'bloco',
+  // Telefone
   telefone: 'telefone',
   celular: 'telefone',
   fone: 'telefone',
   tel: 'telefone',
+  whatsapp: 'telefone',
+  contato: 'telefone',
+  'telefone / contato': 'telefone',
+  'telefone/contato': 'telefone',
+  // Email
   email: 'email',
   'e-mail': 'email',
   mail: 'email',
+}
+
+// Busca parcial: se o cabeçalho CONTÉM uma palavra-chave, mapeia
+function findByPartialMatch(norm: string): keyof LinhaPreview | undefined {
+  if (norm.includes('proponente') || norm.includes('morador') || norm.includes('residente') || norm.includes('condomi') || norm.includes('titular')) return 'nome'
+  if (norm.includes('unidade') || norm.includes('apto') || norm.includes('apartamento')) return 'apartamento'
+  if (norm.includes('bloco') || norm.includes('torre') || norm.includes('edificio')) return 'bloco'
+  if (norm.includes('telefone') || norm.includes('celular') || norm.includes('contato') || norm.includes('whatsapp') || norm.includes('fone')) return 'telefone'
+  if (norm.includes('email') || norm.includes('e-mail')) return 'email'
+  return undefined
 }
 
 export default function ImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -71,7 +104,21 @@ export default function ImportModal({ onClose, onImported }: { onClose: () => vo
         const data = new Uint8Array(e.target!.result as ArrayBuffer)
         const wb = XLSX.read(data, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
-        const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+
+        // Tenta ler com cabeçalho na linha 1 (padrão)
+        let raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+
+        // Se não encontrou colunas reconhecidas, tenta pular a primeira linha
+        // (planilhas com título decorativo na linha 1, cabeçalho na linha 2)
+        if (raw.length > 0) {
+          const primeiraChave = Object.keys(raw[0])[0] ?? ''
+          const normPrimeira = normalizeHeader(String(primeiraChave))
+          const temColuna = ALIAS[normPrimeira] ?? findByPartialMatch(normPrimeira)
+          if (!temColuna && raw.length > 1) {
+            // Tenta com cabeçalho na linha 2
+            raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', range: 1 })
+          }
+        }
 
         if (raw.length === 0) {
           setErroArquivo('A planilha está vazia ou sem dados reconhecíveis.')
@@ -84,8 +131,9 @@ export default function ImportModal({ onClose, onImported }: { onClose: () => vo
         const encontradas: string[] = []
         for (const key of Object.keys(firstRow)) {
           const norm = normalizeHeader(String(key))
-          const mapped = ALIAS[norm]
-          if (mapped) {
+          // Tenta match exato primeiro, depois parcial
+          const mapped = ALIAS[norm] ?? findByPartialMatch(norm)
+          if (mapped && !Object.values(headerMap).includes(mapped)) {
             headerMap[key] = mapped
             if (!encontradas.includes(mapped)) encontradas.push(mapped)
           }
@@ -93,7 +141,8 @@ export default function ImportModal({ onClose, onImported }: { onClose: () => vo
 
         if (!encontradas.includes('nome') && !encontradas.includes('apartamento')) {
           setErroArquivo(
-            'Não foi possível identificar as colunas. Certifique-se que a planilha tem colunas como "morador", "apartamento" e "bloco".'
+            'Não foi possível identificar as colunas. Suas colunas encontradas: ' +
+            Object.keys(firstRow).join(', ')
           )
           return
         }
