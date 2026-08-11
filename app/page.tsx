@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, Users, Phone, Mail, Edit2, Trash2, X, Check, ChevronUp, ChevronDown, FileSpreadsheet } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Search, Plus, Users, Phone, Mail, Edit2, Trash2, X, Check, ChevronUp, ChevronDown, FileSpreadsheet, Camera, Upload } from 'lucide-react'
 import type { Morador } from '@/db/schemas/moradores'
 import ImportModal from '@/components/ImportModal'
 
@@ -14,6 +14,7 @@ type FormData = {
   cpf: string
   observacoes: string
   status: 'ativo' | 'inativo'
+  foto: string
 }
 
 const EMPTY_FORM: FormData = {
@@ -25,6 +26,7 @@ const EMPTY_FORM: FormData = {
   cpf: '',
   observacoes: '',
   status: 'ativo',
+  foto: '',
 }
 
 function formatCPF(value: string) {
@@ -39,41 +41,137 @@ function formatTelefone(value: string) {
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-        status === 'ativo'
-          ? 'bg-emerald-100 text-emerald-800'
-          : 'bg-zinc-100 text-zinc-500'
-      }`}
-    >
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${status === 'ativo' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-500'}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${status === 'ativo' ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
       {status === 'ativo' ? 'Ativo' : 'Inativo'}
     </span>
   )
 }
 
-function MoradorModal({
-  morador,
-  onClose,
-  onSave,
-}: {
-  morador: Morador | null
-  onClose: () => void
-  onSave: () => void
-}) {
-  const [form, setForm] = useState<FormData>(
-    morador
-      ? {
-          nome: morador.nome,
-          apartamento: morador.apartamento,
-          bloco: morador.bloco ?? '',
-          telefone: morador.telefone ?? '',
-          email: morador.email ?? '',
-          cpf: morador.cpf ?? '',
-          observacoes: morador.observacoes ?? '',
-          status: morador.status,
+function AvatarMorador({ foto, nome, size = 'md' }: { foto?: string | null; nome: string; size?: 'sm' | 'md' | 'lg' }) {
+  const initials = nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
+  const sizes = { sm: 'w-9 h-9 text-xs', md: 'w-12 h-12 text-sm', lg: 'w-20 h-20 text-xl' }
+  if (foto) {
+    return <img src={foto} alt={nome} className={`${sizes[size]} rounded-xl object-cover flex-shrink-0`} />
+  }
+  return (
+    <div className={`${sizes[size]} rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
+      {initials || <Users size={size === 'lg' ? 28 : 16} />}
+    </div>
+  )
+}
+
+function FotoCaptura({ foto, onChange }: { foto: string; onChange: (f: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const [cameraAberta, setCameraAberta] = useState(false)
+  const [erroCamera, setErroCamera] = useState('')
+
+  async function abrirCamera() {
+    setErroCamera('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      streamRef.current = stream
+      setCameraAberta(true)
+      setTimeout(() => {
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
+      }, 100)
+    } catch {
+      setErroCamera('Não foi possível acessar a câmera. Use o upload.')
+    }
+  }
+
+  function fecharCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setCameraAberta(false)
+  }
+
+  function capturar() {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas) return
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.75)
+    onChange(dataUrl)
+    fecharCamera()
+  }
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => onChange(ev.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  if (cameraAberta) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="relative bg-zinc-900 rounded-xl overflow-hidden aspect-square w-full max-w-[240px] mx-auto">
+          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+        </div>
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="flex gap-2 max-w-[240px] mx-auto w-full">
+          <button type="button" onClick={fecharCamera} className="flex-1 py-2 rounded-xl bg-zinc-100 text-zinc-600 text-sm font-semibold hover:bg-zinc-200">
+            Cancelar
+          </button>
+          <button type="button" onClick={capturar} className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 flex items-center justify-center gap-1.5">
+            <Camera size={15} /> Tirar foto
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Foto do morador</label>
+      <div className="flex items-center gap-3">
+        {foto
+          ? <img src={foto} alt="Foto" className="w-16 h-16 rounded-xl object-cover border-2 border-blue-100" />
+          : <div className="w-16 h-16 rounded-xl bg-zinc-100 flex items-center justify-center"><Users size={24} className="text-zinc-300" /></div>
         }
-      : EMPTY_FORM
+        <div className="flex flex-col gap-1.5 flex-1">
+          <button type="button" onClick={abrirCamera}
+            className="flex items-center justify-center gap-2 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
+            <Camera size={15} /> Tirar foto com câmera
+          </button>
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="flex items-center justify-center gap-2 py-2 rounded-xl bg-zinc-100 text-zinc-600 text-sm font-semibold hover:bg-zinc-200 transition-colors">
+            <Upload size={15} /> Escolher da galeria
+          </button>
+          {foto && (
+            <button type="button" onClick={() => onChange('')}
+              className="text-xs text-rose-400 hover:text-rose-600 text-center">
+              Remover foto
+            </button>
+          )}
+        </div>
+      </div>
+      {erroCamera && <p className="text-xs text-rose-500">{erroCamera}</p>}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+    </div>
+  )
+}
+
+function MoradorModal({ morador, onClose, onSave }: { morador: Morador | null; onClose: () => void; onSave: () => void }) {
+  const [form, setForm] = useState<FormData>(
+    morador ? {
+      nome: morador.nome,
+      apartamento: morador.apartamento,
+      bloco: morador.bloco ?? '',
+      telefone: morador.telefone ?? '',
+      email: morador.email ?? '',
+      cpf: morador.cpf ?? '',
+      observacoes: morador.observacoes ?? '',
+      status: morador.status,
+      foto: morador.foto ?? '',
+    } : EMPTY_FORM
   )
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
@@ -91,7 +189,7 @@ function MoradorModal({
     if (Object.keys(errs).length) { setErrors(errs); return }
     setLoading(true)
     try {
-      const payload = { ...form, bloco: form.bloco || null, telefone: form.telefone || null, email: form.email || null, cpf: form.cpf || null, observacoes: form.observacoes || null }
+      const payload = { ...form, bloco: form.bloco || null, telefone: form.telefone || null, email: form.email || null, cpf: form.cpf || null, observacoes: form.observacoes || null, foto: form.foto || null }
       if (morador) {
         await fetch(`/api/moradores/${morador.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       } else {
@@ -111,16 +209,10 @@ function MoradorModal({
           {label}{opts?.required && <span className="text-rose-500 ml-0.5">*</span>}
         </label>
         {opts?.as === 'textarea' ? (
-          <textarea
-            rows={3}
-            value={form[key]}
-            onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-            className={`rounded-xl border px-3 py-2 text-sm resize-none bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${hasError ? 'border-rose-400' : 'border-zinc-200'}`}
-          />
+          <textarea rows={3} value={form[key] as string} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+            className={`rounded-xl border px-3 py-2 text-sm resize-none bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${hasError ? 'border-rose-400' : 'border-zinc-200'}`} />
         ) : (
-          <input
-            type={opts?.type ?? 'text'}
-            value={form[key]}
+          <input type={opts?.type ?? 'text'} value={form[key] as string}
             onChange={e => {
               let v = e.target.value
               if (opts?.mask === 'cpf') v = formatCPF(v)
@@ -141,9 +233,7 @@ function MoradorModal({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-zinc-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-              <Users size={20} className="text-white" />
-            </div>
+            <AvatarMorador foto={form.foto} nome={form.nome || '?'} size="md" />
             <div>
               <h2 className="font-bold text-zinc-900">{morador ? 'Editar Morador' : 'Novo Morador'}</h2>
               <p className="text-xs text-zinc-400">Preencha os dados do morador</p>
@@ -154,6 +244,9 @@ function MoradorModal({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+          {/* Foto */}
+          <FotoCaptura foto={form.foto} onChange={foto => setForm(f => ({ ...f, foto }))} />
+
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">{field('nome', 'Nome completo', { required: true })}</div>
             {field('apartamento', 'Apartamento', { required: true })}
@@ -166,16 +259,12 @@ function MoradorModal({
               <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Status</label>
               <div className="flex gap-2">
                 {(['ativo', 'inativo'] as const).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, status: s }))}
+                  <button key={s} type="button" onClick={() => setForm(f => ({ ...f, status: s }))}
                     className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
                       form.status === s
                         ? s === 'ativo' ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-zinc-500 text-white border-zinc-500'
                         : 'bg-zinc-50 text-zinc-500 border-zinc-200 hover:bg-zinc-100'
-                    }`}
-                  >
+                    }`}>
                     {s === 'ativo' ? 'Ativo' : 'Inativo'}
                   </button>
                 ))}
@@ -186,16 +275,9 @@ function MoradorModal({
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-200 text-sm font-semibold text-zinc-600 hover:bg-zinc-50 transition-colors">
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Check size={16} />
-              )}
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+              {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
               {morador ? 'Salvar alterações' : 'Cadastrar morador'}
             </button>
           </div>
@@ -399,8 +481,13 @@ export default function Home() {
                           </div>
                         </td>
                         <td className="px-4 py-3.5">
-                          <p className="font-semibold text-zinc-800">{m.nome}</p>
-                          {m.cpf && <p className="text-xs text-zinc-400">{m.cpf}</p>}
+                          <div className="flex items-center gap-2.5">
+                            <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
+                            <div>
+                              <p className="font-semibold text-zinc-800">{m.nome}</p>
+                              {m.cpf && <p className="text-xs text-zinc-400">{m.cpf}</p>}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex flex-col gap-0.5">
@@ -449,9 +536,7 @@ export default function Home() {
               <div className="sm:hidden divide-y divide-zinc-100">
                 {listagem.map(m => (
                   <div key={m.id} className="p-4 flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                      {m.apartamento}
-                    </div>
+                    <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-semibold text-zinc-800 truncate">{m.nome}</p>

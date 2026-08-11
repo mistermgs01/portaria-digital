@@ -11,6 +11,7 @@ export const moradores = pgTable('moradores', {
   email: varchar('email', { length: 255 }),
   cpf: varchar('cpf', { length: 14 }),
   observacoes: text('observacoes'),
+  foto: text('foto'), // base64 da foto de perfil
   status: statusEnum('status').notNull().default('ativo'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
