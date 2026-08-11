@@ -542,7 +542,9 @@ export default function Home() {
                         <p className="font-semibold text-zinc-800 truncate">{m.nome}</p>
                         <StatusBadge status={m.status} />
                       </div>
-                      {m.bloco && <p className="text-xs text-zinc-400 mt-0.5">Bloco {m.bloco}</p>}
+                      <p className="text-xs text-zinc-500 mt-0.5 font-medium">
+                        Apto {m.apartamento}{m.bloco ? ` · Bloco ${m.bloco}` : ''}
+                      </p>
                       {m.telefone && (
                         <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
                           <Phone size={11} /> {m.telefone}
