@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, Car, Search, Trash2, X, Check, Edit2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, Car, Search, Trash2, X, Check, Edit2, ScanLine, Camera, Loader2 } from 'lucide-react'
 import type { Veiculo } from '@/db/schemas/veiculos'
 import type { Morador } from '@/db/schemas/moradores'
 
@@ -30,11 +30,214 @@ function formatPlaca(v: string) {
   return v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
 }
 
-function VeiculoModal({
-  veiculo,
-  moradores,
+// ─── Modal leitor de placa por câmera ───────────────────────────────────────
+function LeitorPlacaModal({
   onClose,
-  onSave,
+  onPlacaLida,
+}: {
+  onClose: () => void
+  onPlacaLida: (placa: string) => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [cameraAtiva, setCameraAtiva] = useState(false)
+  const [lendo, setLendo] = useState(false)
+  const [erro, setErro] = useState('')
+  const [placaDetectada, setPlacaDetectada] = useState('')
+
+  useEffect(() => {
+    abrirCamera()
+    return () => fecharCamera()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function abrirCamera() {
+    setErro('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+      streamRef.current = stream
+      setCameraAtiva(true)
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play()
+        }
+      }, 80)
+    } catch {
+      setErro('Câmera não disponível. Use a opção de galeria abaixo.')
+    }
+  }
+
+  function fecharCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setCameraAtiva(false)
+  }
+
+  async function capturar() {
+    if (!videoRef.current || !canvasRef.current) return
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d')?.drawImage(video, 0, 0)
+    await enviarParaIA(canvas.toDataURL('image/jpeg', 0.85))
+  }
+
+  async function onArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async ev => {
+      await enviarParaIA(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function enviarParaIA(base64: string) {
+    setLendo(true)
+    setErro('')
+    setPlacaDetectada('')
+    try {
+      const res = await fetch('/api/ler-placa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagem: base64 }),
+      })
+      const json = await res.json()
+      const placa: string = json.placa ?? ''
+      if (placa && placa.length >= 4) {
+        setPlacaDetectada(placa)
+      } else {
+        setErro('Placa não identificada. Tente com mais luz ou aproxime a câmera.')
+      }
+    } catch {
+      setErro('Erro ao processar imagem. Tente novamente.')
+    } finally {
+      setLendo(false)
+    }
+  }
+
+  function confirmar() {
+    fecharCamera()
+    onPlacaLida(placaDetectada)
+    onClose()
+  }
+
+  function tentar() {
+    setPlacaDetectada('')
+    setErro('')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)' }}>
+      <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-yellow-400 flex items-center justify-center">
+              <ScanLine size={18} className="text-yellow-900" />
+            </div>
+            <div>
+              <h2 className="font-bold text-zinc-900 text-sm">Ler placa com câmera</h2>
+              <p className="text-xs text-zinc-400">Aponte para a placa do veículo</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Viewfinder */}
+        <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+          <video ref={videoRef} playsInline muted className={`w-full h-full object-cover ${cameraAtiva ? 'block' : 'hidden'}`} />
+
+          {!cameraAtiva && !erro && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 border-4 border-zinc-600 border-t-white rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Guia de enquadramento */}
+          {cameraAtiva && !lendo && !placaDetectada && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="relative border-2 border-yellow-400 rounded-lg" style={{ width: '72%', height: '30%', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }}>
+                <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-yellow-300 text-xs font-semibold whitespace-nowrap">
+                  Centralize a placa aqui
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Processando */}
+          {lendo && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
+              <Loader2 size={32} className="text-white animate-spin" />
+              <p className="text-white text-sm font-semibold">Identificando placa pela IA...</p>
+            </div>
+          )}
+
+          {/* Placa detectada */}
+          {placaDetectada && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 gap-3">
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl px-8 py-3 text-center">
+                <p className="font-black text-zinc-900 tracking-widest text-2xl font-mono">{placaDetectada}</p>
+                <p className="text-yellow-600 text-[10px] font-bold tracking-widest uppercase mt-0.5">Brasil</p>
+              </div>
+              <p className="text-green-300 text-sm font-semibold">✓ Placa identificada!</p>
+            </div>
+          )}
+
+          <canvas ref={canvasRef} className="hidden" />
+        </div>
+
+        {/* Erro */}
+        {erro && (
+          <div className="px-5 py-2.5 bg-rose-50 border-t border-rose-100 text-rose-600 text-xs font-semibold text-center">
+            {erro}
+          </div>
+        )}
+
+        {/* Ações */}
+        <div className="p-4 flex flex-col gap-2.5">
+          {!placaDetectada ? (
+            <>
+              <button onClick={capturar} disabled={!cameraAtiva || lendo}
+                className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors disabled:opacity-50">
+                <Camera size={18} /> Fotografar placa
+              </button>
+              <button onClick={() => fileRef.current?.click()} disabled={lendo}
+                className="w-full py-2.5 rounded-2xl bg-zinc-100 text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                Escolher da galeria
+              </button>
+            </>
+          ) : (
+            <div className="flex gap-2.5">
+              <button onClick={tentar}
+                className="flex-1 py-2.5 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50 transition-colors">
+                Tentar novamente
+              </button>
+              <button onClick={confirmar}
+                className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors">
+                <Check size={16} /> Buscar placa
+              </button>
+            </div>
+          )}
+        </div>
+
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onArquivo} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Modal cadastro/edição ───────────────────────────────────────────────────
+function VeiculoModal({
+  veiculo, moradores, onClose, onSave,
 }: {
   veiculo: VeiculoComMorador | null
   moradores: Morador[]
@@ -43,14 +246,7 @@ function VeiculoModal({
 }) {
   const [form, setForm] = useState<FormData>(
     veiculo
-      ? {
-          placa: veiculo.veiculo.placa,
-          modelo: veiculo.veiculo.modelo ?? '',
-          cor: veiculo.veiculo.cor ?? '',
-          tipo: veiculo.veiculo.tipo,
-          proprietario: veiculo.veiculo.proprietario ?? '',
-          moradorId: veiculo.veiculo.moradorId?.toString() ?? '',
-        }
+      ? { placa: veiculo.veiculo.placa, modelo: veiculo.veiculo.modelo ?? '', cor: veiculo.veiculo.cor ?? '', tipo: veiculo.veiculo.tipo, proprietario: veiculo.veiculo.proprietario ?? '', moradorId: veiculo.veiculo.moradorId?.toString() ?? '' }
       : EMPTY_FORM
   )
   const [loading, setLoading] = useState(false)
@@ -61,13 +257,7 @@ function VeiculoModal({
     if (!form.placa.trim()) { setError('Placa é obrigatória'); return }
     setLoading(true)
     try {
-      const payload = {
-        ...form,
-        moradorId: form.moradorId ? parseInt(form.moradorId) : null,
-        modelo: form.modelo || null,
-        cor: form.cor || null,
-        proprietario: form.proprietario || null,
-      }
+      const payload = { ...form, moradorId: form.moradorId ? parseInt(form.moradorId) : null, modelo: form.modelo || null, cor: form.cor || null, proprietario: form.proprietario || null }
       if (veiculo) {
         await fetch(`/api/veiculos/${veiculo.veiculo.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       } else {
@@ -91,21 +281,13 @@ function VeiculoModal({
             </div>
             <h2 className="font-bold text-zinc-900">{veiculo ? 'Editar Veículo' : 'Cadastrar Veículo'}</h2>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200">
-            <X size={16} />
-          </button>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200"><X size={16} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
-          {/* Placa */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Placa <span className="text-rose-500">*</span></label>
-            <input
-              value={form.placa}
-              onChange={e => { setForm(f => ({ ...f, placa: formatPlaca(e.target.value) })); setError('') }}
-              placeholder="ABC1234"
-              className="rounded-xl border border-zinc-200 px-3 py-2 text-sm bg-zinc-50 font-mono font-bold text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-              maxLength={7}
-            />
+            <input value={form.placa} onChange={e => { setForm(f => ({ ...f, placa: formatPlaca(e.target.value) })); setError('') }}
+              placeholder="ABC1234" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm bg-zinc-50 font-mono font-bold text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" maxLength={7} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
@@ -154,6 +336,7 @@ function VeiculoModal({
   )
 }
 
+// ─── Página principal ────────────────────────────────────────────────────────
 export default function VeiculosPage() {
   const [lista, setLista] = useState<VeiculoComMorador[]>([])
   const [moradores, setMoradores] = useState<Morador[]>([])
@@ -162,6 +345,8 @@ export default function VeiculosPage() {
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<VeiculoComMorador | null>(null)
   const [deletando, setDeletando] = useState<number | null>(null)
+  const [leitorAberto, setLeitorAberto] = useState(false)
+  const [buscaViaCamera, setBuscaViaCamera] = useState(false)
 
   const buscar = useCallback(async (q: string) => {
     setLoading(true)
@@ -193,6 +378,12 @@ export default function VeiculosPage() {
     }
   }
 
+  function onPlacaLida(placa: string) {
+    setBuscaViaCamera(true)
+    setBusca(placa)
+    setTimeout(() => setBuscaViaCamera(false), 4000)
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div className="bg-white border-b border-zinc-100 shadow-sm">
@@ -201,11 +392,23 @@ export default function VeiculosPage() {
             <h1 className="text-lg font-bold text-zinc-900">Veículos</h1>
             <p className="text-zinc-400 text-xs">Gerencie os veículos cadastrados</p>
           </div>
-          <button onClick={() => { setEditando(null); setModalAberto(true) }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors">
-            <Plus size={16} />
-            <span className="hidden sm:inline">Novo veículo</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Botão câmera ler placa */}
+            <button
+              onClick={() => setLeitorAberto(true)}
+              title="Ler placa com câmera"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-yellow-400 text-yellow-900 hover:bg-yellow-500 transition-colors shadow-sm"
+            >
+              <ScanLine size={18} />
+            </button>
+            <button
+              onClick={() => { setEditando(null); setModalAberto(true) }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={16} />
+              <span className="hidden sm:inline">Novo veículo</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -216,9 +419,7 @@ export default function VeiculosPage() {
             const count = lista.filter(v => v.veiculo.tipo === t).length
             return (
               <div key={t} className="bg-white rounded-2xl p-3 shadow-sm border border-zinc-100 flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold ${tipoCor[t]}`}>
-                  {count}
-                </div>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold ${tipoCor[t]}`}>{count}</div>
                 <div>
                   <p className="text-xs text-zinc-400">{tipoLabel[t]}s</p>
                   <p className="text-sm font-bold text-zinc-800">{count}</p>
@@ -231,18 +432,42 @@ export default function VeiculosPage() {
         {/* Search */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input value={busca} onChange={e => setBusca(e.target.value)}
+          <input
+            value={busca}
+            onChange={e => { setBusca(e.target.value); setBuscaViaCamera(false) }}
             placeholder="Buscar por placa, modelo ou proprietário..."
-            className="w-full pl-9 pr-4 py-3 rounded-xl border border-zinc-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm" />
-          {busca && <button onClick={() => setBusca('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400"><X size={15} /></button>}
+            className={`w-full pl-9 pr-10 py-3 rounded-xl border text-sm focus:outline-none focus:ring-2 shadow-sm transition-all ${
+              buscaViaCamera
+                ? 'border-yellow-400 bg-yellow-50 ring-2 ring-yellow-300'
+                : 'border-zinc-200 bg-white focus:ring-blue-500'
+            }`}
+          />
+          {busca && (
+            <button onClick={() => { setBusca(''); setBuscaViaCamera(false) }} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600">
+              <X size={15} />
+            </button>
+          )}
+          {buscaViaCamera && (
+            <div className="absolute -bottom-5 left-1 flex items-center gap-1 text-[11px] text-yellow-700 font-semibold">
+              <ScanLine size={11} /> Placa lida pela câmera
+            </div>
+          )}
         </div>
 
         {/* List */}
-        <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden">
+        <div className={`bg-white rounded-2xl shadow-sm border overflow-hidden transition-colors ${buscaViaCamera ? 'border-yellow-300' : 'border-zinc-100'}`}>
           <div className="px-4 py-3 border-b border-zinc-50 flex items-center gap-2">
             <Car size={15} className="text-blue-600" />
-            <span className="text-sm font-semibold text-zinc-700">{lista.length} veículo{lista.length !== 1 ? 's' : ''} cadastrado{lista.length !== 1 ? 's' : ''}</span>
+            <span className="text-sm font-semibold text-zinc-700">
+              {lista.length} veículo{lista.length !== 1 ? 's' : ''} cadastrado{lista.length !== 1 ? 's' : ''}
+            </span>
+            {buscaViaCamera && busca && (
+              <span className="ml-auto flex items-center gap-1 text-xs text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full font-semibold">
+                <ScanLine size={11} /> Placa: {busca}
+              </span>
+            )}
           </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-7 h-7 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
@@ -250,14 +475,16 @@ export default function VeiculosPage() {
           ) : lista.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2">
               <Car size={28} className="text-zinc-200" />
-              <p className="text-zinc-400 font-semibold text-sm">Nenhum veículo encontrado</p>
+              <p className="text-zinc-400 font-semibold text-sm">
+                {buscaViaCamera ? `Placa "${busca}" não encontrada` : 'Nenhum veículo encontrado'}
+              </p>
+              {buscaViaCamera && <p className="text-xs text-zinc-300">Este veículo pode não estar cadastrado</p>}
             </div>
           ) : (
             <div className="divide-y divide-zinc-50">
               {lista.map(({ veiculo: v, morador: m }) => (
                 <div key={v.id} className="flex items-center gap-3 px-4 py-3.5 hover:bg-blue-50/30 transition-colors">
-                  {/* Placa visual */}
-                  <div className="flex-shrink-0 bg-yellow-50 border-2 border-yellow-300 rounded-lg px-3 py-1.5 min-w-[90px] text-center">
+                  <div className={`flex-shrink-0 rounded-lg px-3 py-1.5 min-w-[90px] text-center border-2 ${buscaViaCamera ? 'bg-yellow-100 border-yellow-400' : 'bg-yellow-50 border-yellow-300'}`}>
                     <p className="font-black text-zinc-900 tracking-widest text-sm font-mono">{v.placa}</p>
                     <p className="text-yellow-600 text-[9px] font-bold tracking-widest uppercase">Brasil</p>
                   </div>
@@ -291,6 +518,13 @@ export default function VeiculosPage() {
           )}
         </div>
       </main>
+
+      {leitorAberto && (
+        <LeitorPlacaModal
+          onClose={() => setLeitorAberto(false)}
+          onPlacaLida={onPlacaLida}
+        />
+      )}
 
       {modalAberto && (
         <VeiculoModal
