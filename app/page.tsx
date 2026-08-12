@@ -484,8 +484,11 @@ export default function Home() {
                           <div className="flex items-center gap-2.5">
                             <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
                             <div>
-                              <p className="font-semibold text-zinc-800">{m.nome}</p>
-                              {m.cpf && <p className="text-xs text-zinc-400">{m.cpf}</p>}
+                              <p className={`${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
+                              {m.apartamento === '0'
+                                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md mt-0.5">● Funcionário ativo</span>
+                                : m.cpf && <p className="text-xs text-zinc-400">{m.cpf}</p>
+                              }
                             </div>
                           </div>
                         </td>
@@ -539,12 +542,13 @@ export default function Home() {
                     <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-zinc-800 truncate">{m.nome}</p>
+                        <p className={`truncate ${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
                         <StatusBadge status={m.status} />
                       </div>
-                      <p className="text-xs text-zinc-500 mt-0.5 font-medium">
-                        Apto {m.apartamento}{m.bloco ? ` · Bloco ${m.bloco}` : ''}
-                      </p>
+                      {m.apartamento === '0'
+                        ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md mt-0.5">● Funcionário ativo</span>
+                        : <p className="text-xs text-zinc-500 mt-0.5 font-medium">Apto {m.apartamento}{m.bloco ? ` · Bloco ${m.bloco}` : ''}</p>
+                      }
                       {m.telefone && (
                         <p className="text-xs text-zinc-500 mt-1 flex items-center gap-1">
                           <Phone size={11} /> {m.telefone}
