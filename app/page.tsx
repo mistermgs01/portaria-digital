@@ -72,12 +72,16 @@ function AvatarMorador({
       </div>
     )
   }
-  // Funcionário ou sem apto: iniciais
-  const initials = nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
+  // Funcionário (apto=0): logo RS Serviços
+  const iconSize = size === 'lg' ? 48 : size === 'sm' ? 28 : 36
   return (
-    <div className={`${sizes[size]} rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0`}
-      style={{ fontSize: size === 'lg' ? 28 : size === 'sm' ? 13 : 15 }}>
-      {initials || <Users size={size === 'lg' ? 28 : 16} />}
+    <div className={`${sizes[size]} rounded-xl bg-[#0d2c6e] flex items-center justify-center flex-shrink-0`}>
+      <svg width={iconSize} height={Math.round(iconSize * 0.55)} viewBox="0 0 56 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* óvalo externo */}
+        <ellipse cx="28" cy="15" rx="27" ry="13.5" fill="#0d2c6e" stroke="white" strokeWidth="2.2"/>
+        {/* letra R */}
+        <text x="7" y="21.5" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="15" fill="white" letterSpacing="-0.5">RS</text>
+      </svg>
     </div>
   )
 }
