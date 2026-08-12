@@ -48,14 +48,35 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function AvatarMorador({ foto, nome, size = 'md' }: { foto?: string | null; nome: string; size?: 'sm' | 'md' | 'lg' }) {
-  const initials = nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
-  const sizes = { sm: 'w-9 h-9 text-xs', md: 'w-12 h-12 text-sm', lg: 'w-20 h-20 text-xl' }
+function AvatarMorador({
+  foto, nome, size = 'md', apartamento, bloco,
+}: {
+  foto?: string | null
+  nome: string
+  size?: 'sm' | 'md' | 'lg'
+  apartamento?: string
+  bloco?: string | null
+}) {
+  const sizes = { sm: 'w-10 h-10', md: 'w-12 h-12', lg: 'w-20 h-20' }
   if (foto) {
     return <img src={foto} alt={nome} className={`${sizes[size]} rounded-xl object-cover flex-shrink-0`} />
   }
+  // Se tem apartamento, mostra número do apto + Torre X no balão
+  const temApto = apartamento && apartamento !== '0'
+  const torre = bloco ? `Torre ${bloco.replace(/^0+/, '')}` : null
+  if (temApto) {
+    return (
+      <div className={`${sizes[size]} rounded-xl bg-blue-600 flex flex-col items-center justify-center text-white flex-shrink-0 px-1`}>
+        <span className="font-black leading-none" style={{ fontSize: size === 'lg' ? 22 : size === 'sm' ? 13 : 15 }}>{apartamento}</span>
+        {torre && <span className="font-semibold leading-none mt-0.5 text-blue-100" style={{ fontSize: size === 'lg' ? 9 : 7 }}>{torre}</span>}
+      </div>
+    )
+  }
+  // Funcionário ou sem apto: iniciais
+  const initials = nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
   return (
-    <div className={`${sizes[size]} rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0`}>
+    <div className={`${sizes[size]} rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0`}
+      style={{ fontSize: size === 'lg' ? 28 : size === 'sm' ? 13 : 15 }}>
       {initials || <Users size={size === 'lg' ? 28 : 16} />}
     </div>
   )
@@ -482,7 +503,7 @@ export default function Home() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5">
-                            <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
+                            <AvatarMorador foto={m.foto} nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
                             <div>
                               <p className={`${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
                               {m.apartamento === '0'
@@ -539,7 +560,7 @@ export default function Home() {
               <div className="sm:hidden divide-y divide-zinc-100">
                 {listagem.map(m => (
                   <div key={m.id} className="p-4 flex items-start gap-3">
-                    <AvatarMorador foto={m.foto} nome={m.nome} size="sm" />
+                    <AvatarMorador foto={m.foto} nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className={`truncate ${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
