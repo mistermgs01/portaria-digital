@@ -503,7 +503,7 @@ export default function Home() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5">
-                            <AvatarMorador foto={m.foto} nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
+                            <AvatarMorador nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
                             <div>
                               <p className={`${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
                               {m.apartamento === '0'
@@ -560,7 +560,7 @@ export default function Home() {
               <div className="sm:hidden divide-y divide-zinc-100">
                 {listagem.map(m => (
                   <div key={m.id} className="p-4 flex items-start gap-3">
-                    <AvatarMorador foto={m.foto} nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
+                    <AvatarMorador nome={m.nome} size="sm" apartamento={m.apartamento} bloco={m.bloco} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className={`truncate ${m.apartamento === '0' ? 'font-black text-zinc-900' : 'font-semibold text-zinc-800'}`}>{m.nome}</p>
