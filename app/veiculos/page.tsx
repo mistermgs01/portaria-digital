@@ -106,11 +106,11 @@ function LeitorPlacaModal({
       const res = await fetch('/api/ler-placa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagem: base64 }),
+        body: JSON.stringify({ imageBase64: base64 }),
       })
       const json = await res.json()
-      const placa: string = json.placa ?? ''
-      if (placa && placa.length >= 4) {
+      const placa: string = (json.data?.placa ?? json.placa ?? '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
+      if (placa && placa !== 'NAO_IDENTIFICADA' && placa.length >= 4) {
         setPlacaDetectada(placa)
       } else {
         setErro('Placa não identificada. Tente com mais luz ou aproxime a câmera.')
