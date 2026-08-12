@@ -359,6 +359,10 @@ export default function Home() {
   const listagem = [...moradores]
     .filter(m => filtroStatus === 'todos' || m.status === filtroStatus)
     .sort((a, b) => {
+      // Funcionários (apto=0) sempre no final
+      const aFunc = a.apartamento === '0' ? 1 : 0
+      const bFunc = b.apartamento === '0' ? 1 : 0
+      if (aFunc !== bFunc) return aFunc - bFunc
       const va = a[sortField] ?? ''
       const vb = b[sortField] ?? ''
       return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va)
