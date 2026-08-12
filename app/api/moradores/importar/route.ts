@@ -24,37 +24,43 @@ export async function POST(req: NextRequest) {
 
     for (const linha of body.linhas) {
       if (!linha.nome?.trim() || !linha.apartamento?.trim()) {
-        erros.push(`Linha ignorada: nome ou apartamento vazio (${JSON.stringify(linha)})`)
+        erros.push(`Linha ignorada: nome ou apartamento vazio`)
         continue
       }
 
       try {
-        // Verifica se já existe morador no mesmo apto+bloco
+        // Unicidade: mesmo nome (case-insensitive) + mesmo apartamento + mesmo bloco
+        // Permite múltiplos moradores por apartamento (famílias)
+        const nomeLower = linha.nome.trim().toLowerCase()
+        const aptoTrim = linha.apartamento.trim()
+        const blocoTrim = (linha.bloco ?? '').trim().toLowerCase()
+
         const existentes = await db
           .select()
           .from(moradores)
-          .where(eq(moradores.apartamento, linha.apartamento.trim()))
+          .where(eq(moradores.apartamento, aptoTrim))
 
-        const mesmoBloco = existentes.find(m =>
-          (m.bloco ?? '').toLowerCase() === (linha.bloco ?? '').trim().toLowerCase()
+        const mesmaPessoa = existentes.find(m =>
+          m.nome.toLowerCase() === nomeLower &&
+          (m.bloco ?? '').toLowerCase() === blocoTrim
         )
 
-        if (mesmoBloco) {
-          // Atualiza nome e dados
+        if (mesmaPessoa) {
+          // Atualiza somente dados de contato do mesmo morador
           await db.update(moradores)
             .set({
-              nome: linha.nome.trim(),
               bloco: linha.bloco?.trim() || null,
               telefone: linha.telefone?.trim() || null,
               email: linha.email?.trim() || null,
               updatedAt: new Date(),
             })
-            .where(eq(moradores.id, mesmoBloco.id))
+            .where(eq(moradores.id, mesmaPessoa.id))
           atualizados++
         } else {
+          // Novo morador (mesmo que no mesmo apartamento)
           await db.insert(moradores).values({
             nome: linha.nome.trim(),
-            apartamento: linha.apartamento.trim(),
+            apartamento: aptoTrim,
             bloco: linha.bloco?.trim() || null,
             telefone: linha.telefone?.trim() || null,
             email: linha.email?.trim() || null,
