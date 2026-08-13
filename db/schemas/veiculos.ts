@@ -1,5 +1,6 @@
 import { pgTable, serial, varchar, timestamp, pgEnum, integer, text } from 'drizzle-orm/pg-core'
 import { moradores } from './moradores'
+import { autorizacoes } from './autorizacoes'
 
 export const tipoVeiculoEnum = pgEnum('tipo_veiculo', ['carro', 'moto', 'caminhao', 'outro'])
 export const tipoAcessoEnum = pgEnum('tipo_acesso', ['entrada', 'saida'])
@@ -22,11 +23,12 @@ export const acessos = pgTable('acessos', {
   tipo: tipoAcessoEnum('tipo').notNull(),
   origem: origemEnum('origem').notNull().default('visitante'),
   moradorId: integer('morador_id').references(() => moradores.id, { onDelete: 'set null' }),
+  autorizacaoId: integer('autorizacao_id').references(() => autorizacoes.id, { onDelete: 'set null' }),
   nomeVisitante: varchar('nome_visitante', { length: 255 }),
   apartamentoDestino: varchar('apartamento_destino', { length: 20 }),
   observacoes: text('observacoes'),
-  imagemPlaca: text('imagem_placa'), // base64 ou URL da foto tirada
-  confiancaLeitura: varchar('confianca_leitura', { length: 10 }), // ex: "alta", "media", "baixa"
+  imagemPlaca: text('imagem_placa'),
+  confiancaLeitura: varchar('confianca_leitura', { length: 10 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 

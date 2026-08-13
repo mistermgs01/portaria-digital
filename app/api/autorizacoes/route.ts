@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const busca = searchParams.get('busca') ?? ''
   const filtroStatus = searchParams.get('status') ?? 'todas'
+  const filtroPlaca = searchParams.get('placa') ?? ''
 
   const lista = await db
     .select({
@@ -49,6 +50,9 @@ export async function GET(req: NextRequest) {
     .leftJoin(moradores, eq(autorizacoes.moradorId, moradores.id))
     .where(
       and(
+        filtroPlaca
+          ? eq(autorizacoes.placa, filtroPlaca.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+          : undefined,
         busca
           ? or(
               ilike(autorizacoes.nome, `%${busca}%`),

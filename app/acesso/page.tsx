@@ -55,6 +55,13 @@ export default function AcessoPage() {
   const [historico, setHistorico] = useState<AcessoComMorador[]>([])
   const [erroCamera, setErroCamera] = useState('')
 
+  // Saída rápida
+  const [placaSaida, setPlacaSaida] = useState('')
+  const [veiculoSaida, setVeiculoSaida] = useState<VeiculoInfo>(null)
+  const [buscandoSaida, setBuscandoSaida] = useState(false)
+  const [registrandoSaida, setRegistrandoSaida] = useState(false)
+  const [saidaOk, setSaidaOk] = useState(false)
+
   const carregarHistorico = useCallback(async () => {
     const res = await fetch('/api/acessos?limit=20')
     const json = await res.json() as { success: boolean; data: AcessoComMorador[] }
@@ -158,11 +165,20 @@ export default function AcessoPage() {
     if (!placa) return
     setRegistrando(true)
     try {
+      // Busca autorização ativa vinculada a esta placa
+      let autorizacaoId: number | null = null
+      try {
+        const resAut = await fetch(`/api/autorizacoes?placa=${encodeURIComponent(placa)}&status=ativa`)
+        const jsonAut = await resAut.json() as { success: boolean; data: Array<{ id: number }> }
+        if (jsonAut.success && jsonAut.data.length > 0) autorizacaoId = jsonAut.data[0].id
+      } catch { /* ignora se não achar */ }
+
       const payload: Record<string, unknown> = {
         placa,
         tipo: tipoAcesso,
         origem: veiculoInfo?.morador ? 'morador' : 'visitante',
         moradorId: veiculoInfo?.morador?.id ?? null,
+        autorizacaoId,
         nomeVisitante: nomeVisitante || null,
         apartamentoDestino: aptoDestino || null,
         confiancaLeitura: leitura?.confianca ?? null,
@@ -193,6 +209,45 @@ export default function AcessoPage() {
     setPlacaManual('')
     setNomeVisitante('')
     setAptoDestino('')
+  }
+
+  async function buscarVeiculoSaida(placa: string) {
+    if (placa.length < 7) { setVeiculoSaida(null); return }
+    setBuscandoSaida(true)
+    try {
+      const res = await fetch(`/api/veiculos?placa=${encodeURIComponent(placa)}`)
+      const json = await res.json() as { success: boolean; data: VeiculoInfo }
+      setVeiculoSaida(json.data ?? null)
+    } finally {
+      setBuscandoSaida(false)
+    }
+  }
+
+  async function registrarSaidaRapida() {
+    const placa = placaSaida.trim().toUpperCase()
+    if (!placa) return
+    setRegistrandoSaida(true)
+    try {
+      await fetch('/api/acessos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          placa,
+          tipo: 'saida',
+          origem: veiculoSaida?.morador ? 'morador' : 'visitante',
+          moradorId: veiculoSaida?.morador?.id ?? null,
+        }),
+      })
+      setSaidaOk(true)
+      await carregarHistorico()
+      setTimeout(() => {
+        setSaidaOk(false)
+        setPlacaSaida('')
+        setVeiculoSaida(null)
+      }, 2000)
+    } finally {
+      setRegistrandoSaida(false)
+    }
   }
 
   return (
@@ -290,6 +345,67 @@ export default function AcessoPage() {
                       {lendo ? 'Lendo...' : 'Ler placa com IA'}
                     </button>
                   </div>
+                )}
+              </div>
+            </div>
+
+            {/* Quick exit panel */}
+            <div className="bg-white rounded-2xl shadow-sm border border-rose-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-rose-50 flex items-center gap-2 bg-rose-50/40">
+                <LogOut size={16} className="text-rose-600" />
+                <span className="text-sm font-bold text-rose-800">Registrar Saída Rápida</span>
+              </div>
+              <div className="p-4 flex flex-col gap-3">
+                <div className="flex gap-2">
+                  <input
+                    value={placaSaida}
+                    onChange={e => {
+                      const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 7)
+                      setPlacaSaida(v)
+                      setVeiculoSaida(null)
+                      if (v.length === 7) buscarVeiculoSaida(v)
+                    }}
+                    placeholder="Digite a placa (ex: ABC1234)"
+                    maxLength={7}
+                    className="flex-1 rounded-xl border border-zinc-200 px-3 py-2.5 text-sm font-mono font-bold tracking-widest text-zinc-900 bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-rose-400 uppercase placeholder:font-normal placeholder:tracking-normal placeholder:text-zinc-400"
+                  />
+                  <button
+                    onClick={registrarSaidaRapida}
+                    disabled={registrandoSaida || placaSaida.length < 7 || saidaOk}
+                    className={`px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all ${
+                      saidaOk
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50'
+                    }`}>
+                    {saidaOk ? <Check size={16} /> : registrandoSaida ? (
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : <LogOut size={16} />}
+                    {saidaOk ? 'Registrado!' : 'Saída'}
+                  </button>
+                </div>
+                {buscandoSaida && (
+                  <p className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    <span className="w-3 h-3 border-2 border-zinc-200 border-t-zinc-400 rounded-full animate-spin" />
+                    Buscando veículo...
+                  </p>
+                )}
+                {veiculoSaida?.morador && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                    <Check size={14} className="text-emerald-600 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-emerald-800">{veiculoSaida.morador.nome}</p>
+                      <p className="text-[11px] text-emerald-700">
+                        Apto {veiculoSaida.morador.apartamento}
+                        {veiculoSaida.morador.bloco ? ` / Bloco ${veiculoSaida.morador.bloco}` : ''}
+                        {veiculoSaida.veiculo?.modelo ? ` · ${veiculoSaida.veiculo.modelo}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {placaSaida.length === 7 && !buscandoSaida && !veiculoSaida && (
+                  <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2">
+                    Veículo não cadastrado — saída de visitante será registrada.
+                  </p>
                 )}
               </div>
             </div>

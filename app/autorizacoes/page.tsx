@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ShieldCheck, Plus, Search, X, Camera, Check, Loader2,
   Clock, Car, Ban, RefreshCw, Edit2, AlertTriangle, Building2,
+  LogIn, LogOut, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -38,6 +39,15 @@ interface MoradorSimples {
   nome: string
   apartamento: string
   bloco?: string
+}
+
+interface AcessoRegistro {
+  id: number
+  placa: string
+  tipo: 'entrada' | 'saida'
+  origem: string
+  nomeVisitante?: string
+  createdAt: string
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -777,6 +787,29 @@ function CardAutorizacao({
   const ativa = a.status === 'ativa'
   const cancelada = a.status === 'cancelada'
 
+  const [expandido, setExpandido] = useState(false)
+  const [movimentos, setMovimentos] = useState<AcessoRegistro[]>([])
+  const [carregandoMov, setCarregandoMov] = useState(false)
+
+  async function carregarMovimentos() {
+    if (movimentos.length > 0) { setExpandido(e => !e); return }
+    setCarregandoMov(true)
+    setExpandido(true)
+    try {
+      const res = await fetch(`/api/acessos?autorizacaoId=${a.id}`)
+      const json = await res.json() as { success: boolean; data: Array<{ acesso: AcessoRegistro }> }
+      if (json.success) setMovimentos(json.data.map(r => r.acesso))
+    } finally {
+      setCarregandoMov(false)
+    }
+  }
+
+  function formatarHorario(dt: string) {
+    return new Date(dt).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    })
+  }
+
   return (
     <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${cancelada ? 'opacity-55' : ''}`}>
       <div className="flex gap-3 p-4">
@@ -849,6 +882,12 @@ function CardAutorizacao({
           </span>
         </div>
         <div className="flex items-center gap-1">
+          <button onClick={carregarMovimentos}
+            className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-blue-600 transition-colors flex items-center gap-0.5"
+            title="Ver movimentações">
+            <Clock size={14} />
+            {expandido ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
           <button onClick={onEditar} className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-blue-600 transition-colors">
             <Edit2 size={14} />
           </button>
@@ -859,6 +898,53 @@ function CardAutorizacao({
           )}
         </div>
       </div>
+
+      {/* Histórico de movimentações */}
+      {expandido && (
+        <div className="border-t border-zinc-100 bg-zinc-50/70">
+          <div className="px-4 py-2 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Movimentações registradas</span>
+            {movimentos.length > 0 && (
+              <span className="text-[10px] bg-zinc-200 text-zinc-600 font-bold px-1.5 py-0.5 rounded-full">{movimentos.length}</span>
+            )}
+          </div>
+          {carregandoMov ? (
+            <div className="flex items-center gap-2 px-4 pb-3 text-zinc-400 text-xs">
+              <span className="w-3 h-3 border-2 border-zinc-300 border-t-zinc-500 rounded-full animate-spin" />
+              Carregando...
+            </div>
+          ) : movimentos.length === 0 ? (
+            <div className="px-4 pb-3 flex items-center gap-2 text-zinc-400">
+              <Clock size={13} className="text-zinc-300" />
+              <span className="text-xs">Nenhuma movimentação vinculada ainda.</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {movimentos.map(m => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
+                  }`}>
+                    {m.tipo === 'entrada' ? <LogIn size={13} /> : <LogOut size={13} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-black text-xs tracking-widest text-zinc-900">{m.placa}</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'
+                      }`}>
+                        {m.tipo === 'entrada' ? 'Entrada' : 'Saída'}
+                      </span>
+                    </div>
+                    {m.nomeVisitante && <p className="text-[11px] text-zinc-400">{m.nomeVisitante}</p>}
+                  </div>
+                  <span className="text-[10px] text-zinc-400 flex-shrink-0">{formatarHorario(m.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
