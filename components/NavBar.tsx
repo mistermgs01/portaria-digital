@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Building2, Users, Car, LogIn, LogOut, User } from 'lucide-react'
+import { Building2, Users, Car, LogIn, LogOut, User, ShieldCheck } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 const navItems = [
   { href: '/', label: 'Moradores', icon: Users },
   { href: '/veiculos', label: 'Veículos', icon: Car },
-  { href: '/acesso', label: 'Controle de Acesso', icon: LogIn },
+  { href: '/acesso', label: 'Acesso', icon: LogIn },
+  { href: '/autorizacoes', label: 'Autorizações', icon: ShieldCheck },
 ]
 
 type AuthUser = { id: string; username: string; displayName: string; role: string } | null

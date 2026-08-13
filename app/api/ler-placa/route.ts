@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
             },
             {
               type: 'text',
-              text: `Você é um sistema especializado em reconhecimento de placas de veículos brasileiros.
+              text: `Você é um sistema especializado em reconhecimento de placas de veículos brasileiros. A imagem pode estar escura, com reflexo ou pouco contrastada — tente ao máximo identificar a placa mesmo assim.
 
 Analise a imagem e extraia a placa do veículo.
 
@@ -49,10 +49,12 @@ Responda APENAS com um JSON válido neste formato exato:
 }
 
 Regras:
-- "placa": a placa em letras maiúsculas sem espaços ou traços. Padrão antigo: 3 letras + 4 números (ex: ABC1234). Mercosul: 3 letras + 1 número + 1 letra + 2 números (ex: ABC1D23). Se não encontrar placa, coloque "NAO_IDENTIFICADA".
-- "confianca": "alta" (placa clara e legível), "media" (parcialmente legível), "baixa" (difícil de ler).
+- "placa": a placa em letras maiúsculas sem espaços ou traços. Padrão antigo: 3 letras + 4 números (ex: ABC1234). Mercosul: 3 letras + 1 número + 1 letra + 2 números (ex: ABC1D23). Se não encontrar nenhuma placa, coloque "NAO_IDENTIFICADA".
+- "confianca": "alta" (placa clara e legível), "media" (parcialmente legível), "baixa" (difícil de ler mas conseguiu ler).
 - "tipo_placa": "padrao_brasil", "mercosul", "outro" ou "nenhuma".
 - "observacao": nota curta se houver algo relevante, senão string vazia.
+
+IMPORTANTE: se a imagem estiver escura mas der para deduzir as letras/números, tente mesmo assim com confiança "media" ou "baixa". Prefira tentar a retornar NAO_IDENTIFICADA.
 
 Responda SOMENTE com o JSON, sem texto adicional.`,
             },
