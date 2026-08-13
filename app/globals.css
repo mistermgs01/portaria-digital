@@ -133,6 +133,13 @@
 }
 
 /* Tema escuro noturno (19h–6h): fundo azul-marinho escuro estilo da screenshot */
+.dark,
+.dark body,
+.dark html {
+  background-color: #111827 !important;
+  color-scheme: dark;
+}
+
 .dark body {
   background-color: #111827 !important;
 }

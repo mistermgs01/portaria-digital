@@ -10,10 +10,18 @@ function isDarkHour(): boolean {
 export default function DarkModeScheduler() {
   useEffect(() => {
     function aplicar() {
-      if (isDarkHour()) {
-        document.documentElement.classList.add('dark')
+      const escuro = isDarkHour()
+      const html = document.documentElement
+      const body = document.body
+
+      if (escuro) {
+        html.classList.add('dark')
+        html.style.backgroundColor = '#111827'
+        body.style.backgroundColor = '#111827'
       } else {
-        document.documentElement.classList.remove('dark')
+        html.classList.remove('dark')
+        html.style.backgroundColor = ''
+        body.style.backgroundColor = ''
       }
     }
 
