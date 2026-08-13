@@ -80,15 +80,19 @@ export default function AcessoPage() {
         audio: false,
       })
       streamRef.current = stream
-      // atribui srcObject — o autoPlay no elemento cuida do início
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
       setCameraAtiva(true)
+      // srcObject será atribuído pelo useEffect após o React revelar o <video>
     } catch {
       setErroCamera('Não foi possível acessar a câmera. Use o upload de foto.')
     }
   }
+
+  // Atribui o stream ao <video> depois que o React o tornar visível (cameraAtiva=true, previewImg=null)
+  useEffect(() => {
+    if (cameraAtiva && !previewImg && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+    }
+  }, [cameraAtiva, previewImg])
 
   function pararCamera() {
     streamRef.current?.getTracks().forEach(t => t.stop())
