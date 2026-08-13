@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ShieldCheck, Plus, Search, X, Camera, Check, Loader2,
   Clock, Car, Ban, RefreshCw, Edit2, AlertTriangle, Building2,
-  LogIn, LogOut, ChevronDown, ChevronUp,
+  LogIn, LogOut, ChevronDown, ChevronUp, Archive, FileText, Download,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -48,6 +48,30 @@ interface AcessoRegistro {
   origem: string
   nomeVisitante?: string
   createdAt: string
+}
+
+interface VisitaArquivada {
+  id: number
+  autorizacaoId?: number
+  nome: string
+  tipo?: string
+  documento?: string
+  telefone?: string
+  empresa?: string
+  placa?: string
+  modelo?: string
+  cor?: string
+  vaga?: string
+  moradorNome?: string
+  apartamentoDestino?: string
+  blocoDestino?: string
+  motivo?: string
+  observacoes?: string
+  validoDe?: string
+  validoAte?: string
+  statusFinal?: string
+  movimentacoes: AcessoRegistro[]
+  arquivadoEm: string
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -773,6 +797,235 @@ function ModalAutorizacao({
   )
 }
 
+// ─── Modal de Relatório ───────────────────────────────────────────────────────
+function RelatorioModal({ visita, onClose }: { visita: VisitaArquivada; onClose: () => void }) {
+  const TIPO_LABEL_MAP: Record<string, string> = {
+    visitante: 'Visita', prestador: 'Prestador', entrega: 'Entrega', outro: 'Outro',
+  }
+
+  function fmt(dt?: string) {
+    if (!dt) return '—'
+    return new Date(dt).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
+  }
+
+  function fmtHora(dt: string) {
+    return new Date(dt).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+  }
+
+  function imprimir() {
+    window.print()
+  }
+
+  const entradas = visita.movimentacoes.filter(m => m.tipo === 'entrada')
+  const saidas = visita.movimentacoes.filter(m => m.tipo === 'saida')
+
+  return (
+    <>
+      {/* Overlay */}
+      <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-4 overflow-y-auto print:hidden" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto pointer-events-none">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mt-8 mb-8 pointer-events-auto print:shadow-none print:rounded-none print:mt-0" id="relatorio-visita">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-5 rounded-t-2xl print:rounded-none flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <FileText size={18} className="text-white/80" />
+                <span className="text-white/80 text-xs font-semibold uppercase tracking-wider">Relatório de Visita Arquivada</span>
+              </div>
+              <h2 className="text-white text-xl font-black leading-tight">{visita.nome}</h2>
+              <p className="text-blue-100 text-xs mt-0.5">Arquivado em {fmt(visita.arquivadoEm)}</p>
+            </div>
+            <button onClick={onClose} className="text-white/70 hover:text-white ml-4 print:hidden">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-5 flex flex-col gap-5">
+            {/* Identificação */}
+            <section>
+              <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Identificação</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-[10px] text-zinc-400">Tipo</p>
+                  <p className="text-sm font-semibold text-zinc-800">{TIPO_LABEL_MAP[visita.tipo ?? ''] ?? visita.tipo ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400">Status final</p>
+                  <p className={`text-sm font-bold ${visita.statusFinal === 'cancelada' ? 'text-rose-600' : visita.statusFinal === 'expirada' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {visita.statusFinal ?? '—'}
+                  </p>
+                </div>
+                {visita.documento && (
+                  <div>
+                    <p className="text-[10px] text-zinc-400">Documento</p>
+                    <p className="text-sm font-semibold text-zinc-800">{visita.documento}</p>
+                  </div>
+                )}
+                {visita.telefone && (
+                  <div>
+                    <p className="text-[10px] text-zinc-400">Telefone</p>
+                    <p className="text-sm font-semibold text-zinc-800">{visita.telefone}</p>
+                  </div>
+                )}
+                {visita.empresa && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-zinc-400">Empresa</p>
+                    <p className="text-sm font-semibold text-zinc-800">{visita.empresa}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Destino */}
+            <section className="border-t border-zinc-100 pt-4">
+              <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Destino</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {visita.moradorNome && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-zinc-400">Morador</p>
+                    <p className="text-sm font-semibold text-zinc-800">{visita.moradorNome}</p>
+                  </div>
+                )}
+                {visita.apartamentoDestino && (
+                  <div>
+                    <p className="text-[10px] text-zinc-400">Apartamento</p>
+                    <p className="text-sm font-bold text-zinc-900">Apto {visita.apartamentoDestino}{visita.blocoDestino ? ` · Bl ${visita.blocoDestino}` : ''}</p>
+                  </div>
+                )}
+                {visita.vaga && (
+                  <div>
+                    <p className="text-[10px] text-zinc-400">Vaga</p>
+                    <p className="text-sm font-bold text-blue-700">Vaga {visita.vaga}</p>
+                  </div>
+                )}
+                {visita.motivo && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-zinc-400">Motivo</p>
+                    <p className="text-sm text-zinc-700 italic">"{visita.motivo}"</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Veículo */}
+            {(visita.placa || visita.modelo) && (
+              <section className="border-t border-zinc-100 pt-4">
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Veículo</h3>
+                <div className="flex items-center gap-3">
+                  <div className="bg-zinc-900 text-white font-mono font-black px-3 py-1.5 rounded-lg tracking-widest text-sm">
+                    {visita.placa ?? '—'}
+                  </div>
+                  <div>
+                    {visita.modelo && <p className="text-sm font-semibold text-zinc-800">{visita.modelo}{visita.cor ? ` · ${visita.cor}` : ''}</p>}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Período */}
+            <section className="border-t border-zinc-100 pt-4">
+              <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Período de Autorização</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-[10px] text-zinc-400">Criada em</p>
+                  <p className="text-sm font-semibold text-zinc-800">{fmt(visita.validoDe)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-400">Válida até</p>
+                  <p className="text-sm font-semibold text-zinc-800">{fmt(visita.validoAte)}</p>
+                </div>
+              </div>
+            </section>
+
+            {/* Movimentações */}
+            <section className="border-t border-zinc-100 pt-4">
+              <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-3">
+                Movimentações ({visita.movimentacoes.length})
+              </h3>
+              {visita.movimentacoes.length === 0 ? (
+                <p className="text-sm text-zinc-400 italic">Nenhuma movimentação registrada.</p>
+              ) : (
+                <div className="rounded-xl border border-zinc-100 overflow-hidden">
+                  {/* Resumo */}
+                  <div className="grid grid-cols-2 divide-x divide-zinc-100 bg-zinc-50">
+                    <div className="flex items-center gap-2 px-4 py-2.5">
+                      <div className="w-6 h-6 rounded-md bg-emerald-100 flex items-center justify-center">
+                        <LogIn size={12} className="text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-zinc-400">Entradas</p>
+                        <p className="text-sm font-black text-emerald-700">{entradas.length}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 px-4 py-2.5">
+                      <div className="w-6 h-6 rounded-md bg-rose-100 flex items-center justify-center">
+                        <LogOut size={12} className="text-rose-600" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-zinc-400">Saídas</p>
+                        <p className="text-sm font-black text-rose-700">{saidas.length}</p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Lista */}
+                  <div className="divide-y divide-zinc-50">
+                    {visita.movimentacoes.map((m, i) => (
+                      <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'
+                        }`}>
+                          {m.tipo === 'entrada' ? <LogIn size={13} /> : <LogOut size={13} />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-xs tracking-widest">{m.placa}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                              m.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'
+                            }`}>
+                              {m.tipo === 'entrada' ? 'Entrada' : 'Saída'}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-zinc-400 flex-shrink-0 font-mono">{fmtHora(m.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {visita.observacoes && (
+              <section className="border-t border-zinc-100 pt-4">
+                <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-2">Observações</h3>
+                <p className="text-sm text-zinc-600">{visita.observacoes}</p>
+              </section>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 pb-5 flex gap-2.5 print:hidden">
+            <button onClick={onClose}
+              className="flex-1 py-3 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50">
+              Fechar
+            </button>
+            <button onClick={imprimir}
+              className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700">
+              <Download size={16} /> Salvar / Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ─── Card de Autorização ──────────────────────────────────────────────────────
 function CardAutorizacao({
   a,
@@ -790,6 +1043,34 @@ function CardAutorizacao({
   const [expandido, setExpandido] = useState(false)
   const [movimentos, setMovimentos] = useState<AcessoRegistro[]>([])
   const [carregandoMov, setCarregandoMov] = useState(false)
+  const [arquivando, setArquivando] = useState(false)
+  const [relatorio, setRelatorio] = useState<VisitaArquivada | null>(null)
+
+  async function arquivarEGerar() {
+    setArquivando(true)
+    try {
+      // Garante que os movimentos estão carregados
+      let movs = movimentos
+      if (movs.length === 0) {
+        const res = await fetch(`/api/acessos?autorizacaoId=${a.id}`)
+        const json = await res.json() as { success: boolean; data: Array<{ acesso: AcessoRegistro }> }
+        if (json.success) { movs = json.data.map(r => r.acesso); setMovimentos(movs) }
+      }
+      // Arquiva no banco
+      const res = await fetch('/api/arquivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autorizacaoId: a.id }),
+      })
+      const json = await res.json() as { success: boolean; data: VisitaArquivada }
+      if (json.success) {
+        // Sobrescreve os movimentos com os já carregados em memória (mais rápido)
+        setRelatorio({ ...json.data, movimentacoes: movs as unknown as AcessoRegistro[] })
+      }
+    } finally {
+      setArquivando(false)
+    }
+  }
 
   async function carregarMovimentos() {
     if (movimentos.length > 0) { setExpandido(e => !e); return }
@@ -859,8 +1140,22 @@ function CardAutorizacao({
             </p>
           )}
           {a.motivo && <p className="text-xs text-zinc-400 mt-0.5 italic truncate">"{a.motivo}"</p>}
+
+          {/* Botão Arquivar e Gerar Relatório */}
+          <button
+            onClick={arquivarEGerar}
+            disabled={arquivando}
+            className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-colors disabled:opacity-60"
+          >
+            {arquivando
+              ? <><span className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" /> Arquivando...</>
+              : <><Archive size={13} /> Gerar Relatório e Arquivar Visita</>
+            }
+          </button>
         </div>
       </div>
+
+      {relatorio && <RelatorioModal visita={relatorio} onClose={() => setRelatorio(null)} />}
 
       <div className={`flex items-center justify-between px-4 py-2.5 border-t ${
         cancelada ? 'bg-zinc-50 border-zinc-100' :
