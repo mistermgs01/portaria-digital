@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist } from 'next/font/google'
 import NavBar from '@/components/NavBar'
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister'
+import DarkModeScheduler from '@/components/DarkModeScheduler'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'] })
@@ -59,6 +60,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="msapplication-TileColor" content="#1E3A8A" />
       </head>
       <body className={geist.className}>
+        <DarkModeScheduler />
         <ServiceWorkerRegister />
         <NavBar />
         {children}

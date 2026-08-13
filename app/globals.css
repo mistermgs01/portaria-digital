@@ -126,7 +126,69 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Transição suave ao mudar tema */
+  html {
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
 }
+
+/* Tema escuro noturno (19h–6h): sobrescreve os fundos inline das páginas */
+.dark body {
+  background-color: #0f1117 !important;
+}
+
+/* Fundos de página (#F0F4FF → #0f1117) */
+.dark [style*="background-color: rgb(240, 244, 255)"],
+.dark [style*="background-color: #F0F4FF"],
+.dark [style*="backgroundColor: '#F0F4FF'"] {
+  background-color: #0f1117 !important;
+}
+
+/* Cards brancos */
+.dark .bg-white {
+  background-color: #1a1d27 !important;
+  border-color: #2a2d3a !important;
+}
+
+/* Textos zinc escuros */
+.dark .text-zinc-900 { color: #f0f2f5 !important; }
+.dark .text-zinc-800 { color: #dde1e9 !important; }
+.dark .text-zinc-700 { color: #c4c9d4 !important; }
+.dark .text-zinc-600 { color: #9ba3b4 !important; }
+.dark .text-zinc-500 { color: #7c8596 !important; }
+
+/* Bordas e divisores */
+.dark .border-zinc-100 { border-color: #2a2d3a !important; }
+.dark .border-zinc-200 { border-color: #333647 !important; }
+.dark .divide-zinc-50 > * + * { border-color: #22253200 !important; }
+.dark .divide-zinc-100 > * + * { border-color: #2a2d3a !important; }
+
+/* Inputs e fundos secundários */
+.dark .bg-zinc-50 { background-color: #151820 !important; }
+.dark .bg-zinc-100 { background-color: #1e2130 !important; }
+.dark input, .dark textarea {
+  background-color: #1e2130 !important;
+  color: #f0f2f5 !important;
+  border-color: #333647 !important;
+}
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #5c6478 !important;
+}
+
+/* Hover escuro */
+.dark .hover\:bg-zinc-50:hover { background-color: #1e2130 !important; }
+.dark .hover\:bg-zinc-100:hover { background-color: #252838 !important; }
+.dark .hover\:bg-zinc-200:hover { background-color: #2a2d3a !important; }
+
+/* Fundo verde claro dos estados de autorização → escuro */
+.dark .bg-green-50 { background-color: #0d2117 !important; }
+.dark .bg-emerald-50 { background-color: #0a1f16 !important; }
+.dark .bg-rose-50 { background-color: #1f0d0d !important; }
+.dark .bg-amber-50 { background-color: #1f1600 !important; }
+.dark .bg-yellow-50 { background-color: #1a1500 !important; }
+.dark .bg-blue-50 { background-color: #0a1428 !important; }
+.dark .bg-indigo-50 { background-color: #0e0f28 !important; }
+.dark .bg-zinc-50\/70 { background-color: rgba(21, 24, 32, 0.7) !important; }
 
 nextjs-portal {
   display: none !important;
