@@ -247,7 +247,6 @@ function LeitorPlacaModal({
   )
 }
 
-// ─── Modal cadastro/edição ───────────────────────────────────────────────────
 function VeiculoModal({
   veiculo, moradores, onClose, onSave,
 }: {
@@ -263,6 +262,35 @@ function VeiculoModal({
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Busca de morador por nome ou apartamento
+  const moradorAtual = moradores.find(m => m.id === parseInt(form.moradorId))
+  const [buscaMorador, setBuscaMorador] = useState(
+    moradorAtual ? `Apto ${moradorAtual.apartamento}${moradorAtual.bloco ? ` · ${moradorAtual.bloco}` : ''} – ${moradorAtual.nome}` : ''
+  )
+  const [dropdownAberto, setDropdownAberto] = useState(false)
+
+  const morFiltrados = moradores.filter(m => {
+    if (!buscaMorador.trim()) return true
+    const q = buscaMorador.toLowerCase()
+    return (
+      m.nome.toLowerCase().includes(q) ||
+      m.apartamento.includes(buscaMorador.trim()) ||
+      (m.bloco ?? '').toLowerCase().includes(q)
+    )
+  }).slice(0, 10)
+
+  function selecionarMorador(m: Morador) {
+    setForm(f => ({ ...f, moradorId: String(m.id), proprietario: f.proprietario || m.nome }))
+    setBuscaMorador(`Apto ${m.apartamento}${m.bloco ? ` · ${m.bloco}` : ''} – ${m.nome}`)
+    setDropdownAberto(false)
+  }
+
+  function limparMorador() {
+    setForm(f => ({ ...f, moradorId: '' }))
+    setBuscaMorador('')
+    setDropdownAberto(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -284,8 +312,8 @@ function VeiculoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[95dvh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-zinc-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center">
@@ -322,14 +350,58 @@ function VeiculoModal({
               ))}
             </div>
           </div>
+
+          {/* ── Busca de morador por nome ou apartamento ── */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Morador vinculado</label>
-            <select value={form.moradorId} onChange={e => setForm(f => ({ ...f, moradorId: e.target.value, proprietario: e.target.value ? (moradores.find(m => m.id === parseInt(e.target.value))?.nome ?? '') : f.proprietario }))}
-              className="rounded-xl border border-zinc-200 px-3 py-2 text-sm bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">— Visitante / não vinculado —</option>
-              {moradores.map(m => <option key={m.id} value={m.id}>Apto {m.apartamento}{m.bloco ? ` Bloco ${m.bloco}` : ''} – {m.nome}</option>)}
-            </select>
+            <div className="relative">
+              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 bg-zinc-50 ${dropdownAberto ? 'ring-2 ring-blue-500 border-blue-400' : 'border-zinc-200'}`}>
+                <Search size={14} className="text-zinc-400 flex-shrink-0" />
+                <input
+                  value={buscaMorador}
+                  onChange={e => { setBuscaMorador(e.target.value); setDropdownAberto(true); if (!e.target.value) setForm(f => ({ ...f, moradorId: '' })) }}
+                  onFocus={() => setDropdownAberto(true)}
+                  placeholder="Digite apto, bloco ou nome..."
+                  className="flex-1 text-sm bg-transparent outline-none placeholder:text-zinc-400"
+                />
+                {buscaMorador && (
+                  <button type="button" onClick={limparMorador} className="text-zinc-400 hover:text-zinc-600 flex-shrink-0">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Dropdown com resultados */}
+              {dropdownAberto && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
+                  {/* Opção nenhum */}
+                  <button type="button" onClick={limparMorador}
+                    className="w-full text-left px-4 py-2.5 hover:bg-zinc-50 text-zinc-400 text-sm italic border-b border-zinc-100">
+                    — Sem vínculo (visitante) —
+                  </button>
+                  {morFiltrados.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-zinc-400 text-center">Nenhum morador encontrado</div>
+                  ) : (
+                    morFiltrados.map(m => (
+                      <button key={m.id} type="button" onClick={() => selecionarMorador(m)}
+                        className={`w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between border-b border-zinc-50 last:border-0 ${form.moradorId === String(m.id) ? 'bg-blue-50' : ''}`}>
+                        <span className="text-sm font-semibold text-zinc-800 truncate">{m.nome}</span>
+                        <span className="text-xs text-zinc-400 flex-shrink-0 ml-2 font-mono">
+                          {m.apartamento}{m.bloco ? ` · ${m.bloco}` : ''}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            {form.moradorId && (
+              <p className="text-xs text-green-600 font-semibold flex items-center gap-1 mt-0.5">
+                <Check size={12} /> Morador selecionado
+              </p>
+            )}
           </div>
+
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Proprietário</label>
             <input value={form.proprietario} onChange={e => setForm(f => ({ ...f, proprietario: e.target.value }))} placeholder="Nome do proprietário" className="rounded-xl border border-zinc-200 px-3 py-2 text-sm bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500" />
