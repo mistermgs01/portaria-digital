@@ -40,12 +40,14 @@ function LeitorPlacaModal({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const previewRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [cameraAtiva, setCameraAtiva] = useState(false)
   const [lendo, setLendo] = useState(false)
   const [erro, setErro] = useState('')
   const [placaDetectada, setPlacaDetectada] = useState('')
+  const [fotoCapturada, setFotoCapturada] = useState('')
 
   useEffect(() => {
     abrirCamera()
@@ -85,7 +87,9 @@ function LeitorPlacaModal({
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     canvas.getContext('2d')?.drawImage(video, 0, 0)
-    await enviarParaIA(canvas.toDataURL('image/jpeg', 0.85))
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    setFotoCapturada(dataUrl)
+    await enviarParaIA(dataUrl)
   }
 
   async function onArquivo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -131,6 +135,7 @@ function LeitorPlacaModal({
   function tentar() {
     setPlacaDetectada('')
     setErro('')
+    setFotoCapturada('')
   }
 
   return (
@@ -154,16 +159,20 @@ function LeitorPlacaModal({
 
         {/* Viewfinder */}
         <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
-          <video ref={videoRef} playsInline muted className={`w-full h-full object-cover ${cameraAtiva ? 'block' : 'hidden'}`} />
+          {/* Foto capturada (mostra enquanto IA processa ou deu erro) */}
+          {fotoCapturada && !placaDetectada && (
+            <img src={fotoCapturada} alt="foto capturada" className="w-full h-full object-cover" />
+          )}
+          <video ref={videoRef} playsInline muted className={`w-full h-full object-cover ${cameraAtiva && !fotoCapturada ? 'block' : 'hidden'}`} />
 
-          {!cameraAtiva && !erro && (
+          {!cameraAtiva && !erro && !fotoCapturada && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-8 h-8 border-4 border-zinc-600 border-t-white rounded-full animate-spin" />
             </div>
           )}
 
           {/* Guia de enquadramento */}
-          {cameraAtiva && !lendo && !placaDetectada && (
+          {cameraAtiva && !lendo && !placaDetectada && !fotoCapturada && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="relative border-2 border-yellow-400 rounded-lg" style={{ width: '72%', height: '30%', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }}>
                 <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-yellow-300 text-xs font-semibold whitespace-nowrap">
@@ -197,8 +206,9 @@ function LeitorPlacaModal({
 
         {/* Erro */}
         {erro && (
-          <div className="px-5 py-2.5 bg-rose-50 border-t border-rose-100 text-rose-600 text-xs font-semibold text-center">
+          <div className="px-5 py-2.5 bg-rose-50 border-t border-rose-100 text-rose-700 text-xs font-semibold text-center">
             {erro}
+            <p className="text-rose-400 font-normal mt-0.5">Verifique se a placa está visível na foto acima</p>
           </div>
         )}
 
@@ -206,9 +216,11 @@ function LeitorPlacaModal({
         <div className="p-4 flex flex-col gap-2.5">
           {!placaDetectada ? (
             <>
-              <button onClick={capturar} disabled={!cameraAtiva || lendo}
+              <button onClick={() => {
+                  setFotoCapturada(''); setErro(''); capturar()
+                }} disabled={!cameraAtiva || lendo}
                 className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors disabled:opacity-50">
-                <Camera size={18} /> Fotografar placa
+                <Camera size={18} /> {fotoCapturada ? 'Fotografar novamente' : 'Fotografar placa'}
               </button>
               <button onClick={() => fileRef.current?.click()} disabled={lendo}
                 className="w-full py-2.5 rounded-2xl bg-zinc-100 text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors disabled:opacity-50">
