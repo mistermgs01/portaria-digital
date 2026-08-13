@@ -23,6 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         moradorId: body.moradorId ? Number(body.moradorId) : null,
         apartamentoDestino: body.apartamentoDestino || null,
         blocoDestino: body.blocoDestino || null,
+        vaga: body.vaga || null,
         validoAte: new Date(body.validoAte),
         status: body.status,
         motivo: body.motivo || null,

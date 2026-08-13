@@ -3,8 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   ShieldCheck, Plus, Search, X, Camera, Check, Loader2,
-  Clock, User, Car, Ban, RefreshCw, Edit2, AlertTriangle,
-  ChevronDown, CalendarDays, Phone, Building2, FileText,
+  Clock, Car, Ban, RefreshCw, Edit2, AlertTriangle, Building2,
 } from 'lucide-react'
 
 // ─── tipos ────────────────────────────────────────────────────────────────────
@@ -25,6 +24,7 @@ interface Autorizacao {
   moradorId?: number
   apartamentoDestino?: string
   blocoDestino?: string
+  vaga?: string
   validoAte: string
   status: StatusAut
   motivo?: string
@@ -67,26 +67,31 @@ function formatarPrazo(dt: string): { label: string; urgente: boolean; expirado:
   return { label: `${dias} dia${dias > 1 ? 's' : ''} restantes`, urgente: false, expirado: false }
 }
 
-function dataLocalParaISO(local: string): string {
-  // "2025-12-31T23:59" -> ISO string
-  if (!local) return ''
-  return new Date(local).toISOString()
+// Calcula timestamp futuro em ms
+function tsRapido(horas: number): number {
+  return Date.now() + horas * 3600000
 }
 
-function isoParaDatetimeLocal(iso: string): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+// Formata timestamp para exibição amigável
+function formatarTs(ts: number): string {
+  const d = new Date(ts)
+  return d.toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
 }
 
-function prazoRapido(horas: number): string {
-  const d = new Date(Date.now() + horas * 3600000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+// Timestamp -> ISO string para enviar ao servidor
+function tsParaISO(ts: number): string {
+  return new Date(ts).toISOString()
 }
 
-// ─── componente CameraPlaca (inline) ─────────────────────────────────────────
+// ISO string -> timestamp number
+function isoParaTs(iso: string): number {
+  return iso ? new Date(iso).getTime() : Date.now() + 86400000
+}
+
+// ─── componente CameraModal ───────────────────────────────────────────────────
 function CameraModal({
   onClose,
   onCaptura,
@@ -105,34 +110,48 @@ function CameraModal({
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    abrirCamera()
-    return () => streamRef.current?.getTracks().forEach(t => t.stop())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function abrirCamera() {
-    setErro('')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      })
-      streamRef.current = stream
-      setAtiva(true)
-      setTimeout(() => {
-        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
-      }, 80)
-    } catch {
-      setErro('Câmera não disponível. Use a galeria.')
+    let cancelled = false
+    async function iniciar() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        })
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return }
+        streamRef.current = stream
+        // atribui srcObject diretamente — o autoPlay no elemento cuida do resto
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+        }
+        setAtiva(true)
+      } catch (e) {
+        if (!cancelled) setErro('Câmera não disponível. Use "Escolher da galeria" abaixo.')
+        console.error('Camera error:', e)
+      }
     }
-  }
+    iniciar()
+    return () => {
+      cancelled = true
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+  }, [])
 
   async function fotografar() {
     if (!videoRef.current || !canvasRef.current) return
-    const v = videoRef.current, c = canvasRef.current
-    c.width = v.videoWidth; c.height = v.videoHeight
+    const v = videoRef.current
+    const c = canvasRef.current
+    c.width = v.videoWidth || 1280
+    c.height = v.videoHeight || 720
     c.getContext('2d')?.drawImage(v, 0, 0)
     const dataUrl = c.toDataURL('image/jpeg', 0.85)
-    setFoto(dataUrl); setErro(''); setPlaca('')
+    setFoto(dataUrl)
+    setErro('')
+    setPlaca('')
     await enviarIA(dataUrl)
   }
 
@@ -149,7 +168,7 @@ function CameraModal({
       if (p && p !== 'NAO_IDENTIFICADA' && p.length >= 4) {
         setPlaca(p)
       } else {
-        setErro('Placa não lida. Verifique a foto e tente novamente.')
+        setErro('Placa não lida automaticamente. Verifique a foto e tente de novo, ou use a foto e preencha a placa manualmente.')
       }
     } catch {
       setErro('Erro ao processar. Tente novamente.')
@@ -162,7 +181,13 @@ function CameraModal({
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = async ev => { await enviarIA(ev.target?.result as string) }
+    reader.onload = async ev => {
+      const base64 = ev.target?.result as string
+      setFoto(base64)
+      setErro('')
+      setPlaca('')
+      await enviarIA(base64)
+    }
     reader.readAsDataURL(file)
   }
 
@@ -173,8 +198,9 @@ function CameraModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[60] bg-black/80 flex items-end sm:items-center justify-center">
       <div className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl">
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
@@ -182,7 +208,7 @@ function CameraModal({
             </div>
             <div>
               <p className="font-bold text-zinc-900 text-sm">Fotografar veículo</p>
-              <p className="text-zinc-400 text-xs">A placa será lida automaticamente</p>
+              <p className="text-zinc-400 text-xs">A placa é lida automaticamente pela IA</p>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200">
@@ -190,31 +216,54 @@ function CameraModal({
           </button>
         </div>
 
+        {/* Viewfinder */}
         <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
-          {foto && !placa && <img src={foto} alt="captura" className="w-full h-full object-cover" />}
-          <video ref={videoRef} playsInline muted
-            className={`w-full h-full object-cover ${ativa && !foto ? 'block' : 'hidden'}`} />
+          {/* Foto capturada */}
+          {foto && !placa && (
+            <img src={foto} alt="captura" className="absolute inset-0 w-full h-full object-cover" />
+          )}
 
+          {/* Vídeo ao vivo — autoPlay garante que inicie sem chamar .play() manualmente */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ display: ativa && !foto ? 'block' : 'none' }}
+            className="w-full h-full object-cover"
+          />
+
+          {/* Spinner de carregamento */}
           {!ativa && !erro && !foto && (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
               <div className="w-8 h-8 border-4 border-zinc-600 border-t-white rounded-full animate-spin" />
+              <p className="text-zinc-400 text-xs">Iniciando câmera...</p>
             </div>
           )}
-          {ativa && !lendo && !placa && !foto && (
+
+          {/* Guia de enquadramento */}
+          {ativa && !lendo && !foto && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="border-2 border-yellow-400 rounded-lg" style={{ width: '72%', height: '30%', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)' }}>
+              <div
+                className="border-2 border-yellow-400 rounded-lg relative"
+                style={{ width: '72%', height: '30%', boxShadow: '0 0 0 9999px rgba(0,0,0,0.45)' }}
+              >
                 <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-yellow-300 text-xs font-semibold whitespace-nowrap">
                   Centralize a placa aqui
                 </span>
               </div>
             </div>
           )}
+
+          {/* Processando IA */}
           {lendo && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 gap-3">
               <Loader2 size={32} className="text-white animate-spin" />
-              <p className="text-white text-sm font-semibold">Lendo placa...</p>
+              <p className="text-white text-sm font-semibold">Lendo placa pela IA...</p>
             </div>
           )}
+
+          {/* Placa detectada */}
           {placa && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 gap-3">
               <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl px-8 py-3 text-center">
@@ -224,61 +273,80 @@ function CameraModal({
               <p className="text-green-300 text-sm font-semibold">✓ Placa lida!</p>
             </div>
           )}
+
           <canvas ref={canvasRef} className="hidden" />
         </div>
 
+        {/* Erro */}
         {erro && (
-          <div className="px-5 py-2.5 bg-rose-50 border-t border-rose-100 text-rose-700 text-xs font-semibold text-center">
+          <div className="px-4 py-3 bg-rose-50 border-t border-rose-100 text-rose-700 text-xs text-center leading-relaxed">
             {erro}
           </div>
         )}
 
+        {/* Botões */}
         <div className="p-4 flex flex-col gap-2.5">
           {!placa ? (
             <>
-              <button onClick={() => { setFoto(''); setErro(''); fotografar() }}
+              <button
+                onClick={() => { setFoto(''); setErro(''); fotografar() }}
                 disabled={!ativa || lendo}
-                className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors disabled:opacity-50">
+                className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50"
+              >
                 <Camera size={18} /> {foto ? 'Fotografar novamente' : 'Fotografar veículo'}
               </button>
-              <button onClick={() => fileRef.current?.click()} disabled={lendo}
-                className="w-full py-2.5 rounded-2xl bg-zinc-100 text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-zinc-200 transition-colors">
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={lendo}
+                className="w-full py-2.5 rounded-2xl bg-zinc-100 text-zinc-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-zinc-200"
+              >
                 Escolher da galeria
               </button>
             </>
           ) : (
             <div className="flex gap-2.5">
-              <button onClick={() => { setPlaca(''); setFoto(''); setErro('') }}
-                className="flex-1 py-2.5 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50">
+              <button
+                onClick={() => { setPlaca(''); setFoto(''); setErro('') }}
+                className="flex-1 py-2.5 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50"
+              >
                 Tentar novamente
               </button>
-              <button onClick={confirmar}
-                className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700">
+              <button
+                onClick={confirmar}
+                className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-blue-700"
+              >
                 <Check size={16} /> Usar esta foto
               </button>
             </div>
           )}
-          {/* confirmar mesmo sem placa detectada */}
+          {/* Usar foto mesmo sem placa lida */}
           {foto && !placa && !lendo && (
-            <button onClick={confirmar}
-              className="w-full py-2 rounded-2xl bg-zinc-100 text-zinc-500 text-sm hover:bg-zinc-200">
-              Usar foto sem placa automática
+            <button
+              onClick={confirmar}
+              className="w-full py-2 rounded-xl bg-zinc-50 text-zinc-500 text-xs hover:bg-zinc-100"
+            >
+              Usar foto (preencher placa manualmente)
             </button>
           )}
         </div>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onArquivo} />
+
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onArquivo} />
       </div>
     </div>
   )
 }
 
-// ─── Modal Nova/Editar Autorização ─────────────────────────────────────────
-const BLANK = {
+// ─── Modal Nova/Editar Autorização ────────────────────────────────────────────
+const BLANK_FORM = {
   nome: '', tipo: 'visitante' as TipoAut, documento: '', telefone: '', empresa: '',
   placa: '', modelo: '', cor: '', fotoVeiculo: '', moradorId: '',
-  apartamentoDestino: '', blocoDestino: '', validoAte: '', motivo: '', observacoes: '',
+  apartamentoDestino: '', blocoDestino: '', vaga: '',
+  validoAteTs: tsRapido(24), // armazenamos como timestamp number
+  motivo: '', observacoes: '',
   status: 'ativa' as StatusAut,
 }
+
+type FormState = typeof BLANK_FORM
 
 function ModalAutorizacao({
   aut,
@@ -289,21 +357,26 @@ function ModalAutorizacao({
   onClose: () => void
   onSalvo: () => void
 }) {
-  const [form, setForm] = useState({ ...BLANK })
+  const [form, setForm] = useState<FormState>({ ...BLANK_FORM })
   const [moradores, setMoradores] = useState<MoradorSimples[]>([])
   const [buscaMorador, setBuscaMorador] = useState('')
+  const [showBuscaDropdown, setShowBuscaDropdown] = useState(false)
   const [camera, setCamera] = useState(false)
   const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState('')
+  const [erroForm, setErroForm] = useState('')
 
+  // Carregar moradores
   useEffect(() => {
-    // Carregar moradores para o select
     fetch('/api/moradores?limit=500')
       .then(r => r.json())
-      .then(j => setMoradores((j.data ?? []).filter((m: MoradorSimples & { apartamento: string }) => m.apartamento !== '0')))
+      .then(j => {
+        const lista = (j.data ?? []) as Array<MoradorSimples & { apartamento: string }>
+        setMoradores(lista.filter(m => m.apartamento !== '0'))
+      })
       .catch(() => {})
   }, [])
 
+  // Popular form ao editar
   useEffect(() => {
     if (aut) {
       setForm({
@@ -319,83 +392,96 @@ function ModalAutorizacao({
         moradorId: aut.moradorId ? String(aut.moradorId) : '',
         apartamentoDestino: aut.apartamentoDestino ?? '',
         blocoDestino: aut.blocoDestino ?? '',
-        validoAte: isoParaDatetimeLocal(aut.validoAte),
+        vaga: aut.vaga ?? '',
+        validoAteTs: isoParaTs(aut.validoAte),
         motivo: aut.motivo ?? '',
         observacoes: aut.observacoes ?? '',
         status: aut.status ?? 'ativa',
       })
+      setBuscaMorador(aut.moradorNome ?? '')
     } else {
-      // padrão: 24h
-      setForm({ ...BLANK, validoAte: prazoRapido(24) })
+      setForm({ ...BLANK_FORM, validoAteTs: tsRapido(24) })
+      setBuscaMorador('')
     }
   }, [aut])
 
-  function set(k: keyof typeof BLANK, v: string) {
+  function setField<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm(f => ({ ...f, [k]: v }))
   }
 
   function selecionarMorador(m: MoradorSimples) {
-    setForm(f => ({
-      ...f,
-      moradorId: String(m.id),
-      apartamentoDestino: m.apartamento,
-      blocoDestino: m.bloco ?? '',
-    }))
+    setField('moradorId', String(m.id))
+    setField('apartamentoDestino', m.apartamento)
+    setField('blocoDestino', m.bloco ?? '')
     setBuscaMorador(m.nome)
+    setShowBuscaDropdown(false)
   }
 
   function onCapturaCamera(base64: string, placaLida: string) {
-    setForm(f => ({
-      ...f,
-      fotoVeiculo: base64,
-      placa: placaLida || f.placa,
-    }))
+    setField('fotoVeiculo', base64)
+    if (placaLida) setField('placa', placaLida)
   }
 
   async function salvar() {
-    if (!form.nome.trim()) { setErro('Nome é obrigatório'); return }
-    if (!form.validoAte) { setErro('Data de validade é obrigatória'); return }
-    setSalvando(true); setErro('')
+    if (!form.nome.trim()) { setErroForm('Nome é obrigatório'); return }
+    if (!form.validoAteTs) { setErroForm('Prazo de validade é obrigatório'); return }
+    setSalvando(true)
+    setErroForm('')
     try {
       const payload = {
-        ...form,
-        validoAte: dataLocalParaISO(form.validoAte),
+        nome: form.nome,
+        tipo: form.tipo,
+        documento: form.documento || null,
+        telefone: form.telefone || null,
+        empresa: form.empresa || null,
+        placa: form.placa || null,
+        modelo: form.modelo || null,
+        cor: form.cor || null,
+        fotoVeiculo: form.fotoVeiculo || null,
         moradorId: form.moradorId ? Number(form.moradorId) : null,
+        apartamentoDestino: form.apartamentoDestino || null,
+        blocoDestino: form.blocoDestino || null,
+        vaga: form.vaga || null,
+        validoAte: tsParaISO(form.validoAteTs),
+        status: form.status,
+        motivo: form.motivo || null,
+        observacoes: form.observacoes || null,
       }
       const url = aut ? `/api/autorizacoes/${aut.id}` : '/api/autorizacoes'
-      const method = aut ? 'PUT' : 'POST'
       const res = await fetch(url, {
-        method,
+        method: aut ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) throw new Error('Erro ao salvar')
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? 'Erro ao salvar')
       onSalvo()
       onClose()
-    } catch {
-      setErro('Erro ao salvar. Tente novamente.')
+    } catch (e) {
+      setErroForm(e instanceof Error ? e.message : 'Erro ao salvar. Tente novamente.')
     } finally {
       setSalvando(false)
     }
   }
 
   const morFiltrados = moradores.filter(m =>
-    buscaMorador === '' ||
+    !buscaMorador ||
     m.nome.toLowerCase().includes(buscaMorador.toLowerCase()) ||
     m.apartamento.includes(buscaMorador)
   ).slice(0, 8)
 
+  const prazoLabel = formatarTs(form.validoAteTs)
+
   return (
     <>
       {camera && (
-        <CameraModal
-          onClose={() => setCamera(false)}
-          onCaptura={onCapturaCamera}
-        />
+        <CameraModal onClose={() => setCamera(false)} onCaptura={onCapturaCamera} />
       )}
-      <div className="fixed inset-0 z-40 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl max-h-[95dvh] flex flex-col">
-          {/* Header */}
+
+      <div className="fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center">
+        <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[95dvh] flex flex-col">
+
+          {/* ── Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100 flex-shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
@@ -403,7 +489,7 @@ function ModalAutorizacao({
               </div>
               <div>
                 <p className="font-bold text-zinc-900">{aut ? 'Editar Autorização' : 'Nova Autorização'}</p>
-                <p className="text-zinc-400 text-xs">Acesso provisório para visitantes/prestadores</p>
+                <p className="text-zinc-400 text-xs">Acesso provisório para visitantes e prestadores</p>
               </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center hover:bg-zinc-200">
@@ -411,16 +497,17 @@ function ModalAutorizacao({
             </button>
           </div>
 
-          {/* Corpo scrollável */}
-          <div className="overflow-y-auto flex-1 p-5 space-y-5">
+          {/* ── Corpo scrollável */}
+          <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
+
             {/* Tipo */}
             <div>
-              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Tipo de autorização</label>
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Tipo</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {(['visitante', 'prestador', 'entrega', 'outro'] as TipoAut[]).map(t => (
-                  <button key={t} onClick={() => set('tipo', t)}
-                    className={`py-2 rounded-xl text-xs font-bold transition-all border ${
-                      form.tipo === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-blue-300'
+                  <button key={t} type="button" onClick={() => setField('tipo', t)}
+                    className={`py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                      form.tipo === t ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-50 text-zinc-600 border-zinc-200'
                     }`}>
                     {TIPO_LABEL[t]}
                   </button>
@@ -428,25 +515,25 @@ function ModalAutorizacao({
               </div>
             </div>
 
-            {/* Foto do veículo */}
+            {/* Foto + câmera */}
             <div>
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Foto do veículo</label>
               {form.fotoVeiculo ? (
                 <div className="relative rounded-xl overflow-hidden border border-zinc-200" style={{ aspectRatio: '16/7' }}>
                   <img src={form.fotoVeiculo} alt="veículo" className="w-full h-full object-cover" />
-                  <button onClick={() => setCamera(true)}
+                  <button type="button" onClick={() => setCamera(true)}
                     className="absolute bottom-2 right-2 px-3 py-1.5 bg-black/60 text-white text-xs font-semibold rounded-lg flex items-center gap-1 hover:bg-black/80">
                     <RefreshCw size={12} /> Refazer
                   </button>
-                  <button onClick={() => set('fotoVeiculo', '')}
+                  <button type="button" onClick={() => setField('fotoVeiculo', '')}
                     className="absolute top-2 right-2 w-7 h-7 bg-black/60 text-white rounded-full flex items-center justify-center hover:bg-rose-600">
                     <X size={14} />
                   </button>
                 </div>
               ) : (
-                <button onClick={() => setCamera(true)}
-                  className="w-full py-8 border-2 border-dashed border-zinc-300 rounded-xl flex flex-col items-center gap-2 hover:border-blue-400 hover:bg-blue-50 transition-colors group">
-                  <div className="w-12 h-12 rounded-2xl bg-zinc-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                <button type="button" onClick={() => setCamera(true)}
+                  className="w-full py-7 border-2 border-dashed border-zinc-300 rounded-xl flex flex-col items-center gap-2 hover:border-blue-400 hover:bg-blue-50 transition-colors group">
+                  <div className="w-11 h-11 rounded-2xl bg-zinc-100 group-hover:bg-blue-100 flex items-center justify-center">
                     <Camera size={22} className="text-zinc-400 group-hover:text-blue-500" />
                   </div>
                   <p className="text-zinc-500 text-sm font-semibold group-hover:text-blue-600">Fotografar veículo + ler placa</p>
@@ -455,30 +542,36 @@ function ModalAutorizacao({
               )}
             </div>
 
-            {/* Placa (preenchida auto ou manual) */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Placa + Cor + Vaga */}
+            <div className="grid grid-cols-3 gap-2.5">
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Placa</label>
-                <input value={form.placa} onChange={e => set('placa', e.target.value.toUpperCase())}
+                <input value={form.placa} onChange={e => setField('placa', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                   placeholder="ABC1234"
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 text-sm font-mono font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Cor</label>
-                <input value={form.cor} onChange={e => set('cor', e.target.value)}
+                <input value={form.cor} onChange={e => setField('cor', e.target.value)}
                   placeholder="Prata"
-                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Vaga</label>
+                <input value={form.vaga} onChange={e => setField('vaga', e.target.value)}
+                  placeholder="V-12"
+                  className="w-full px-3 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Modelo do veículo</label>
-              <input value={form.modelo} onChange={e => set('modelo', e.target.value)}
+              <input value={form.modelo} onChange={e => setField('modelo', e.target.value)}
                 placeholder="Hyundai Tucson, Honda CG 160..."
                 className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
 
-            {/* Dados da pessoa */}
+            {/* Dados pessoais */}
             <div className="pt-1 border-t border-zinc-100">
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">
                 {form.tipo === 'prestador' ? 'Dados do Prestador' : 'Dados do Visitante'}
@@ -486,14 +579,14 @@ function ModalAutorizacao({
               <div className="space-y-3">
                 <div>
                   <label className="block text-xs text-zinc-400 mb-1">Nome *</label>
-                  <input value={form.nome} onChange={e => set('nome', e.target.value)}
+                  <input value={form.nome} onChange={e => setField('nome', e.target.value)}
                     placeholder="Nome completo"
                     className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 </div>
                 {form.tipo === 'prestador' && (
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Empresa / Serviço</label>
-                    <input value={form.empresa} onChange={e => set('empresa', e.target.value)}
+                    <input value={form.empresa} onChange={e => setField('empresa', e.target.value)}
                       placeholder="Ex: Hidra Instalações, Amazon..."
                       className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
@@ -501,13 +594,13 @@ function ModalAutorizacao({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">Telefone</label>
-                    <input value={form.telefone} onChange={e => set('telefone', e.target.value)}
+                    <input value={form.telefone} onChange={e => setField('telefone', e.target.value)}
                       placeholder="11 9 9999-9999"
                       className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
                   <div>
                     <label className="block text-xs text-zinc-400 mb-1">RG / CPF</label>
-                    <input value={form.documento} onChange={e => set('documento', e.target.value)}
+                    <input value={form.documento} onChange={e => setField('documento', e.target.value)}
                       placeholder="Opcional"
                       className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   </div>
@@ -519,70 +612,124 @@ function ModalAutorizacao({
             <div className="pt-1 border-t border-zinc-100">
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Apartamento de destino</label>
               <div className="relative">
-                <input value={buscaMorador} onChange={e => setBuscaMorador(e.target.value)}
-                  placeholder="Buscar morador ou digitar apto..."
-                  className="w-full px-4 py-2.5 pl-9 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                {buscaMorador && morFiltrados.length > 0 && (
-                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-xl overflow-hidden">
+                <div className="flex items-center border border-zinc-200 rounded-xl px-4 py-2.5 gap-2 focus-within:ring-2 focus-within:ring-blue-400">
+                  <Search size={14} className="text-zinc-400 flex-shrink-0" />
+                  <input
+                    value={buscaMorador}
+                    onChange={e => { setBuscaMorador(e.target.value); setShowBuscaDropdown(true) }}
+                    onFocus={() => setShowBuscaDropdown(true)}
+                    placeholder="Buscar morador pelo nome ou apto..."
+                    className="flex-1 text-sm outline-none"
+                  />
+                  {buscaMorador && (
+                    <button type="button" onClick={() => { setBuscaMorador(''); setField('moradorId', ''); setShowBuscaDropdown(false) }}>
+                      <X size={14} className="text-zinc-400" />
+                    </button>
+                  )}
+                </div>
+                {showBuscaDropdown && buscaMorador.length > 0 && morFiltrados.length > 0 && (
+                  <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-2xl overflow-hidden">
                     {morFiltrados.map(m => (
-                      <button key={m.id} onClick={() => selecionarMorador(m)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors flex items-center justify-between">
+                      <button key={m.id} type="button" onClick={() => selecionarMorador(m)}
+                        className="w-full text-left px-4 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between border-b border-zinc-50 last:border-0">
                         <span className="text-sm font-semibold text-zinc-800 truncate">{m.nome}</span>
-                        <span className="text-xs text-zinc-400 flex-shrink-0 ml-2">Apto {m.apartamento}{m.bloco ? ` · ${m.bloco}` : ''}</span>
+                        <span className="text-xs text-zinc-400 flex-shrink-0 ml-2">
+                          Apto {m.apartamento}{m.bloco ? ` · ${m.bloco}` : ''}
+                        </span>
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <div>
+              <div className="grid grid-cols-3 gap-2.5 mt-2">
+                <div className="col-span-2">
                   <label className="block text-xs text-zinc-400 mb-1">Apartamento</label>
-                  <input value={form.apartamentoDestino} onChange={e => set('apartamentoDestino', e.target.value)}
+                  <input value={form.apartamentoDestino} onChange={e => setField('apartamentoDestino', e.target.value)}
                     placeholder="101"
                     className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Bloco / Torre</label>
-                  <input value={form.blocoDestino} onChange={e => set('blocoDestino', e.target.value)}
+                  <label className="block text-xs text-zinc-400 mb-1">Bloco</label>
+                  <input value={form.blocoDestino} onChange={e => setField('blocoDestino', e.target.value)}
                     placeholder="01"
                     className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 </div>
               </div>
             </div>
 
-            {/* Validade */}
+            {/* ── PRAZO DE VALIDADE ── */}
             <div className="pt-1 border-t border-zinc-100">
-              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Prazo de validade *</label>
-              {/* Botões rápidos */}
-              <div className="flex gap-2 mb-3 flex-wrap">
-                {[
-                  { label: '4h', h: 4 }, { label: '8h', h: 8 }, { label: '24h', h: 24 },
-                  { label: '3 dias', h: 72 }, { label: '7 dias', h: 168 }, { label: '30 dias', h: 720 },
-                ].map(({ label, h }) => (
-                  <button key={h} onClick={() => set('validoAte', prazoRapido(h))}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-100 text-zinc-600 text-xs font-bold hover:bg-blue-100 hover:text-blue-700 transition-colors">
-                    {label}
-                  </button>
-                ))}
+              <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">
+                Prazo de validade *
+              </label>
+
+              {/* Data selecionada — exibição amigável */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-3 flex items-center gap-3">
+                <Clock size={16} className="text-blue-500 flex-shrink-0" />
+                <div>
+                  <p className="text-blue-700 font-bold text-sm">{prazoLabel}</p>
+                  <p className="text-blue-400 text-xs">Toque nos botões abaixo para alterar</p>
+                </div>
               </div>
-              <input type="datetime-local" value={form.validoAte} onChange={e => set('validoAte', e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+
+              {/* Botões rápidos */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[
+                  { label: '4 horas', h: 4 },
+                  { label: '8 horas', h: 8 },
+                  { label: '24 horas', h: 24 },
+                  { label: '3 dias', h: 72 },
+                  { label: '7 dias', h: 168 },
+                  { label: '30 dias', h: 720 },
+                ].map(({ label, h }) => {
+                  const ts = tsRapido(h)
+                  // Verifica se este botão está selecionado (±5min)
+                  const selecionado = Math.abs(form.validoAteTs - ts) < 5 * 60 * 1000
+                  return (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => setField('validoAteTs', ts)}
+                      className={`py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                        selecionado
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Data/hora personalizada — usa um input nativo mas gerenciado separadamente */}
+              <div>
+                <label className="block text-xs text-zinc-400 mb-1">Ou escolha data e hora exata:</label>
+                <input
+                  type="datetime-local"
+                  defaultValue={new Date(form.validoAteTs).toISOString().slice(0, 16)}
+                  key={form.validoAteTs} /* força remount quando muda via botão */
+                  onChange={e => {
+                    if (e.target.value) setField('validoAteTs', new Date(e.target.value).getTime())
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                />
+              </div>
             </div>
 
             {/* Motivo */}
             <div>
               <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Motivo da visita</label>
-              <input value={form.motivo} onChange={e => set('motivo', e.target.value)}
+              <input value={form.motivo} onChange={e => setField('motivo', e.target.value)}
                 placeholder="Ex: obra, entrega de móveis, visita familiar..."
                 className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
 
-            {/* Status (apenas edição) */}
+            {/* Status (só na edição) */}
             {aut && (
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">Status</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)}
+                <select value={form.status} onChange={e => setField('status', e.target.value as StatusAut)}
                   className="w-full px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                   <option value="ativa">Ativa</option>
                   <option value="expirada">Expirada</option>
@@ -591,22 +738,23 @@ function ModalAutorizacao({
               </div>
             )}
 
-            {erro && (
+            {erroForm && (
               <div className="px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-sm font-semibold">
-                {erro}
+                {erroForm}
               </div>
             )}
           </div>
 
-          {/* Footer fixo */}
+          {/* ── Footer */}
           <div className="p-5 border-t border-zinc-100 flex-shrink-0 flex gap-2.5">
-            <button onClick={onClose} className="flex-1 py-3 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-3 rounded-2xl border border-zinc-200 text-zinc-600 font-semibold text-sm hover:bg-zinc-50">
               Cancelar
             </button>
-            <button onClick={salvar} disabled={salvando}
+            <button type="button" onClick={salvar} disabled={salvando}
               className="flex-1 py-3 rounded-2xl bg-green-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:bg-green-700 disabled:opacity-50">
               {salvando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              {aut ? 'Salvar alterações' : 'Criar autorização'}
+              {aut ? 'Salvar' : 'Criar autorização'}
             </button>
           </div>
         </div>
@@ -630,26 +778,18 @@ function CardAutorizacao({
   const cancelada = a.status === 'cancelada'
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-      cancelada ? 'opacity-50 border-zinc-200' : ativa ? 'border-zinc-200 hover:shadow-md' : 'border-zinc-200'
-    }`}>
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${cancelada ? 'opacity-55' : ''}`}>
       <div className="flex gap-3 p-4">
-        {/* Foto do veículo ou ícone */}
-        <div className="flex-shrink-0">
-          {a.fotoVeiculo ? (
-            <div className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-200">
-              <img src={a.fotoVeiculo} alt="veículo" className="w-full h-full object-cover" />
-            </div>
-          ) : (
-            <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${
-              ativa ? 'bg-green-50' : 'bg-zinc-100'
-            }`}>
-              <Car size={28} className={ativa ? 'text-green-400' : 'text-zinc-300'} />
-            </div>
-          )}
-        </div>
+        {a.fotoVeiculo ? (
+          <div className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-200 flex-shrink-0">
+            <img src={a.fotoVeiculo} alt="veículo" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <div className={`w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0 ${ativa ? 'bg-green-50' : 'bg-zinc-100'}`}>
+            <Car size={28} className={ativa ? 'text-green-400' : 'text-zinc-300'} />
+          </div>
+        )}
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
             <p className="font-bold text-zinc-900 text-sm leading-tight truncate">{a.nome}</p>
@@ -664,29 +804,31 @@ function CardAutorizacao({
             </p>
           )}
 
-          {a.placa && (
-            <span className="inline-block bg-zinc-900 text-white text-[11px] font-mono font-bold px-2 py-0.5 rounded-md tracking-widest mb-1">
-              {a.placa}
-            </span>
-          )}
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {a.placa && (
+              <span className="bg-zinc-900 text-white text-[11px] font-mono font-bold px-2 py-0.5 rounded-md tracking-widest">
+                {a.placa}
+              </span>
+            )}
+            {a.vaga && (
+              <span className="bg-blue-100 text-blue-700 text-[11px] font-bold px-2 py-0.5 rounded-md">
+                Vaga {a.vaga}
+              </span>
+            )}
+          </div>
 
-          {a.modelo && <p className="text-xs text-zinc-400">{a.modelo}{a.cor ? ` · ${a.cor}` : ''}</p>}
+          {a.modelo && <p className="text-xs text-zinc-400 mt-0.5">{a.modelo}{a.cor ? ` · ${a.cor}` : ''}</p>}
 
           {(a.apartamentoDestino || a.moradorNome) && (
             <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1">
               <Building2 size={11} />
-              {a.moradorNome ? `${a.moradorNome} · ` : ''}
-              Apto {a.apartamentoDestino}{a.blocoDestino ? ` · ${a.blocoDestino}` : ''}
+              {a.moradorNome ? `${a.moradorNome} — ` : ''}Apto {a.apartamentoDestino}{a.blocoDestino ? ` · Bl ${a.blocoDestino}` : ''}
             </p>
           )}
-
-          {a.motivo && (
-            <p className="text-xs text-zinc-400 mt-0.5 italic truncate">"{a.motivo}"</p>
-          )}
+          {a.motivo && <p className="text-xs text-zinc-400 mt-0.5 italic truncate">"{a.motivo}"</p>}
         </div>
       </div>
 
-      {/* Footer com prazo */}
       <div className={`flex items-center justify-between px-4 py-2.5 border-t ${
         cancelada ? 'bg-zinc-50 border-zinc-100' :
         prazo.expirado ? 'bg-rose-50 border-rose-100' :
@@ -694,18 +836,11 @@ function CardAutorizacao({
         'bg-green-50 border-green-100'
       }`}>
         <div className="flex items-center gap-1.5">
-          {cancelada ? (
-            <Ban size={13} className="text-zinc-400" />
-          ) : prazo.expirado ? (
-            <AlertTriangle size={13} className="text-rose-500" />
-          ) : (
-            <Clock size={13} className={prazo.urgente ? 'text-amber-500' : 'text-green-500'} />
-          )}
+          {cancelada ? <Ban size={13} className="text-zinc-400" /> :
+           prazo.expirado ? <AlertTriangle size={13} className="text-rose-500" /> :
+           <Clock size={13} className={prazo.urgente ? 'text-amber-500' : 'text-green-500'} />}
           <span className={`text-xs font-bold ${
-            cancelada ? 'text-zinc-400' :
-            prazo.expirado ? 'text-rose-600' :
-            prazo.urgente ? 'text-amber-600' :
-            'text-green-700'
+            cancelada ? 'text-zinc-400' : prazo.expirado ? 'text-rose-600' : prazo.urgente ? 'text-amber-600' : 'text-green-700'
           }`}>
             {cancelada ? 'Cancelada' : prazo.label}
           </span>
@@ -714,13 +849,11 @@ function CardAutorizacao({
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={onEditar}
-            className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-blue-600 transition-colors">
+          <button onClick={onEditar} className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-blue-600 transition-colors">
             <Edit2 size={14} />
           </button>
           {ativa && (
-            <button onClick={onCancelar}
-              className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-rose-600 transition-colors">
+            <button onClick={onCancelar} className="p-1.5 rounded-lg hover:bg-white/70 text-zinc-500 hover:text-rose-600 transition-colors">
               <Ban size={14} />
             </button>
           )}
@@ -730,7 +863,7 @@ function CardAutorizacao({
   )
 }
 
-// ─── Página Principal ─────────────────────────────────────────────────────────
+// ─── Página principal ─────────────────────────────────────────────────────────
 export default function AutorizacoesPage() {
   const [lista, setLista] = useState<Autorizacao[]>([])
   const [busca, setBusca] = useState('')
@@ -752,7 +885,7 @@ export default function AutorizacoesPage() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // Atualização automática a cada 60s (para expirar em tempo real)
+  // Recarregar a cada 60s para expirar visualmente
   useEffect(() => {
     const t = setInterval(carregar, 60000)
     return () => clearInterval(t)
@@ -777,7 +910,7 @@ export default function AutorizacoesPage() {
         />
       )}
 
-      {/* Header */}
+      {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, #166534 0%, #16a34a 100%)' }} className="px-4 pt-6 pb-8">
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center justify-between mb-4">
@@ -785,18 +918,19 @@ export default function AutorizacoesPage() {
               <h1 className="text-2xl font-black text-white">Autorizações</h1>
               <p className="text-green-100 text-sm mt-0.5">Acesso provisório · Visitantes e prestadores</p>
             </div>
-            <button onClick={() => { setAutSelecionada(null); setModal('criar') }}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white text-green-700 rounded-2xl font-bold text-sm shadow-lg hover:shadow-xl transition-all active:scale-95">
+            <button
+              onClick={() => { setAutSelecionada(null); setModal('criar') }}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white text-green-700 rounded-2xl font-bold text-sm shadow-lg hover:shadow-xl active:scale-95 transition-all"
+            >
               <Plus size={16} /> Nova
             </button>
           </div>
 
-          {/* Stats */}
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: 'Ativas', valor: ativas, cor: 'text-green-300' },
               { label: 'Expiradas', valor: expiradas, cor: 'text-amber-300' },
-              { label: 'Total hoje', valor: lista.length, cor: 'text-white' },
+              { label: 'Total', valor: lista.length, cor: 'text-white' },
             ].map(({ label, valor, cor }) => (
               <div key={label} className="bg-white/10 rounded-xl px-3 py-2 text-center">
                 <p className={`text-xl font-black ${cor}`}>{valor}</p>
@@ -809,7 +943,7 @@ export default function AutorizacoesPage() {
 
       <div className="max-w-2xl mx-auto px-4 -mt-4">
         {/* Busca */}
-        <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 overflow-hidden mb-3">
+        <div className="bg-white rounded-2xl shadow-sm border border-zinc-100 mb-3">
           <div className="flex items-center gap-3 px-4 py-3">
             <Search size={16} className="text-zinc-400 flex-shrink-0" />
             <input value={busca} onChange={e => setBusca(e.target.value)}
@@ -831,9 +965,8 @@ export default function AutorizacoesPage() {
                 filtro === f
                   ? f === 'ativa' ? 'bg-green-600 text-white' :
                     f === 'expirada' ? 'bg-amber-500 text-white' :
-                    f === 'cancelada' ? 'bg-zinc-600 text-white' :
-                    'bg-blue-600 text-white'
-                  : 'bg-white text-zinc-500 border border-zinc-200 hover:border-zinc-300'
+                    f === 'cancelada' ? 'bg-zinc-600 text-white' : 'bg-blue-600 text-white'
+                  : 'bg-white text-zinc-500 border border-zinc-200'
               }`}>
               {f === 'ativa' ? 'Ativas' : f === 'todas' ? 'Todas' : f === 'expirada' ? 'Expiradas' : 'Canceladas'}
             </button>
@@ -852,7 +985,7 @@ export default function AutorizacoesPage() {
             </div>
             <p className="text-zinc-500 font-semibold text-lg">Nenhuma autorização</p>
             <p className="text-zinc-400 text-sm mt-1">
-              {filtro === 'ativa' ? 'Sem autorizações ativas no momento' : `Sem registros com status "${filtro}"`}
+              {filtro === 'ativa' ? 'Sem autorizações ativas agora' : `Sem registros "${filtro}"`}
             </p>
             <button onClick={() => { setAutSelecionada(null); setModal('criar') }}
               className="mt-4 px-6 py-2.5 bg-green-600 text-white font-bold rounded-2xl text-sm hover:bg-green-700 flex items-center gap-2 mx-auto">

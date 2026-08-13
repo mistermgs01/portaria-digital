@@ -21,6 +21,7 @@ export const autorizacoes = pgTable('autorizacoes', {
   moradorId: integer('morador_id').references(() => moradores.id, { onDelete: 'set null' }),
   apartamentoDestino: varchar('apartamento_destino', { length: 20 }),
   blocoDestino: varchar('bloco_destino', { length: 10 }),
+  vaga: varchar('vaga', { length: 20 }), // número da vaga de visitante
   // Validade
   validoAte: timestamp('valido_ate').notNull(),
   status: statusAutorizacaoEnum('status').notNull().default('ativa'),
