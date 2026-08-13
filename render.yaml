@@ -11,3 +11,7 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
+      - key: BTY_LLM_SERVER_BASE_URL
+        value: https://aigw-api.happyseeds.ai/v1
+      - key: BTY_LLM_SERVER_API_KEY
+        sync: false
