@@ -292,7 +292,7 @@ export default function ArquivoPage() {
   })
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="min-h-screen bg-[#F0F4FF] dark:bg-[#111827]" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #3730A3 0%, #6366F1 100%)' }}>
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">

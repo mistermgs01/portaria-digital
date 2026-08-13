@@ -255,7 +255,7 @@ export default function AcessoPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#F0F4FF', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div className="min-h-screen bg-[#F0F4FF] dark:bg-[#111827]" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
       <div className="bg-white border-b border-zinc-100 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
           <h1 className="text-lg font-bold text-zinc-900">Controle de Acesso</h1>

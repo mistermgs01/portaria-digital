@@ -137,16 +137,19 @@
   background-color: #111827 !important;
 }
 
-/* Fundo principal das páginas */
-.dark [style*="background-color: rgb(240, 244, 255)"],
-.dark [style*="background-color: #F0F4FF"],
-.dark [style*="backgroundColor: '#F0F4FF'"] {
+/* Fundo principal das páginas — fallback para qualquer fundo inline residual */
+.dark [style*="background-color: rgb(240, 244, 255)"] {
   background-color: #111827 !important;
 }
 
 /* Cards brancos → azul-marinho escuro */
 .dark .bg-white {
   background-color: #1e2a45 !important;
+  border-color: #2a3a5c !important;
+}
+
+/* Cabeçalhos de página (border-b com bg-white) */
+.dark .border-b {
   border-color: #2a3a5c !important;
 }
 

@@ -1282,7 +1282,7 @@ export default function AutorizacoesPage() {
   const expiradas = lista.filter(a => a.status === 'expirada').length
 
   return (
-    <main className="min-h-screen bg-zinc-50 pb-20">
+    <main className="min-h-screen bg-zinc-50 dark:bg-[#111827] pb-20">
       {(modal === 'criar' || modal === 'editar') && (
         <ModalAutorizacao
           aut={modal === 'editar' ? autSelecionada : null}
