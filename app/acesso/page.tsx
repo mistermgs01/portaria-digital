@@ -69,12 +69,13 @@ export default function AcessoPage() {
     setErroCamera('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
       })
       streamRef.current = stream
+      // atribui srcObject — o autoPlay no elemento cuida do início
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        await videoRef.current.play()
       }
       setCameraAtiva(true)
     } catch {
@@ -220,10 +221,20 @@ export default function AcessoPage() {
                 <div className="relative bg-zinc-900 rounded-xl overflow-hidden aspect-video flex items-center justify-center">
                   {previewImg ? (
                     <img src={previewImg} alt="Placa capturada" className="w-full h-full object-contain" />
-                  ) : cameraAtiva ? (
-                    <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-zinc-500 py-6">
+                  ) : null}
+
+                  {/* Vídeo SEMPRE no DOM — visibilidade por CSS — evita bug de srcObject antes do mount */}
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                    style={{ display: cameraAtiva && !previewImg ? 'block' : 'none' }}
+                  />
+
+                  {!cameraAtiva && !previewImg && (
+                    <div className="absolute inset-0 flex flex-col items-center gap-2 text-zinc-500 py-6 justify-center">
                       <CameraOff size={36} className="opacity-40" />
                       <p className="text-sm opacity-60">Câmera desligada</p>
                       {erroCamera && <p className="text-xs text-rose-400 text-center px-4">{erroCamera}</p>}

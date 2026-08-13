@@ -60,15 +60,13 @@ function LeitorPlacaModal({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
       })
       streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
       setCameraAtiva(true)
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play()
-        }
-      }, 80)
     } catch {
       setErro('Câmera não disponível. Use a opção de galeria abaixo.')
     }
@@ -163,7 +161,7 @@ function LeitorPlacaModal({
           {fotoCapturada && !placaDetectada && (
             <img src={fotoCapturada} alt="foto capturada" className="w-full h-full object-cover" />
           )}
-          <video ref={videoRef} playsInline muted className={`w-full h-full object-cover ${cameraAtiva && !fotoCapturada ? 'block' : 'hidden'}`} />
+          <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${cameraAtiva && !fotoCapturada ? 'block' : 'hidden'}`} />
 
           {!cameraAtiva && !erro && !fotoCapturada && (
             <div className="absolute inset-0 flex items-center justify-center">

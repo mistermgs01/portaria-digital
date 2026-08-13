@@ -97,16 +97,21 @@ function FotoCaptura({ foto, onChange }: { foto: string; onChange: (f: string) =
   async function abrirCamera() {
     setErroCamera('')
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
       streamRef.current = stream
       setCameraAberta(true)
-      setTimeout(() => {
-        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
-      }, 100)
+      // srcObject será atribuído após o mount do <video> via useEffect
     } catch {
       setErroCamera('Não foi possível acessar a câmera. Use o upload.')
     }
   }
+
+  // Quando cameraAberta muda para true, atribui o stream ao <video> que acabou de montar
+  useEffect(() => {
+    if (cameraAberta && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+    }
+  }, [cameraAberta])
 
   function fecharCamera() {
     streamRef.current?.getTracks().forEach(t => t.stop())
@@ -138,7 +143,7 @@ function FotoCaptura({ foto, onChange }: { foto: string; onChange: (f: string) =
     return (
       <div className="flex flex-col gap-2">
         <div className="relative bg-zinc-900 rounded-xl overflow-hidden aspect-square w-full max-w-[240px] mx-auto">
-          <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+          <video ref={videoRef} autoPlay className="w-full h-full object-cover" playsInline muted />
         </div>
         <canvas ref={canvasRef} className="hidden" />
         <div className="flex gap-2 max-w-[240px] mx-auto w-full">
